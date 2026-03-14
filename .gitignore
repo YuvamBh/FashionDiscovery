@@ -1,16 +1,82 @@
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# dependencies
 node_modules
-.next
-dist
+.pnp
+.pnp.js
+
+# testing
+coverage
+
+# next.js
+.next/
+out/
+
+# expo / react native
+.expo/
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.orig.*
+
+# turborepo
 .turbo
-.expo
+
+# vercel
+.vercel
+
+# AI & Agent scratchpads
+.antigravity/
+.cursor/
+.aider/
+.gemini/
+
+# build outputs
+dist
+build
+.cache
+
+# misc / logs
 *.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# environment variables
 .env
 .env.local
-.env.*.local
-.DS_Store
+.env.development.local
+.env.test.local
+.env.production.local
+*.env
+
+# typescript
 *.tsbuildinfo
-.vercel
-.cache
-coverage
-*.pem
-docs
+
+# OS metadata
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# IDEs and Editors
+.vscode/
+!.vscode/extensions.json
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Project specific dev files
+PROGRESS*.md
