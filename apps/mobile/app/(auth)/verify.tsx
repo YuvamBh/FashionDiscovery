@@ -38,8 +38,8 @@ export default function VerifyScreen() {
       // Simulate network
       await new Promise((resolve) => setTimeout(resolve, 800));
       
-      // If verification succeeds, route to the next flow (profiling)
-      router.replace('/name-setup');
+      // If verification succeeds, route to the deep calibration flow
+      router.replace('/(calibration)/style-preference');
     } catch (e: any) {
       console.error(e);
       setErrorStatus(e.message || "Invalid code format.");

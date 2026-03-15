@@ -56,6 +56,7 @@ export default function RootLayout() {
         <Stack.Screen name="welcome" options={{ animation: 'none' }} />
         <Stack.Screen name="(onboarding)" options={{ animation: 'fade' }} />
         <Stack.Screen name="(auth)" options={{ animation: 'fade' }} />
+        <Stack.Screen name="(calibration)" options={{ animation: 'slide_from_right' }} />
         <Stack.Screen name="name-setup" options={{ animation: 'slide_from_right' }} />
         <Stack.Screen name="vibe" options={{ animation: 'slide_from_right' }} />
         <Stack.Screen name="brands" options={{ animation: 'slide_from_right' }} />

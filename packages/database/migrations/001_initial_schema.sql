@@ -4,6 +4,9 @@
 CREATE TABLE users (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   phone_number TEXT UNIQUE NOT NULL,
+  full_name TEXT,
+  aesthetic_vibe TEXT,
+  fashion_preferences JSONB DEFAULT '{}',
   authority_score FLOAT DEFAULT 0,
   taste_profile JSONB DEFAULT '{}',
   total_signals INTEGER DEFAULT 0,
