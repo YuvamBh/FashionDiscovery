@@ -3,7 +3,7 @@ import { supabase } from './supabase';
 export async function getProducts(limit = 20, offset = 0) {
   const { data, error } = await supabase
     .from('products')
-    .select('*')
+    .select('*, brands(name)')
     .eq('status', 'live')
     .range(offset, offset + limit - 1);
 

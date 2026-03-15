@@ -18,26 +18,17 @@ export async function getOrCreateUser(userId: string, phone: string) {
   return { user: data, error };
 }
 
-export async function mergeTasteProfile(userId: string, updates: Record<string, unknown>) {
-  const { data: existing } = await supabase
-    .from('users')
-    .select('taste_profile')
-    .eq('id', userId)
-    .single();
-
-  const current = (existing?.taste_profile as Record<string, unknown>) || {};
-  const merged = { ...current, ...updates };
-
+export async function updateUserProfile(userId: string, updates: Record<string, unknown>) {
   const { error } = await supabase
     .from('users')
-    .update({ taste_profile: merged })
+    .update(updates)
     .eq('id', userId);
 
   return { error };
 }
 
-// Keep old name as alias for backwards compat
-export const updateTasteProfile = mergeTasteProfile;
+// Keep old name as alias for backwards compat where used, or we can just update usages.
+export const updateTasteProfile = updateUserProfile;
 
 export async function updateAuthorityScore(userId: string, score: number) {
   const { error } = await supabase

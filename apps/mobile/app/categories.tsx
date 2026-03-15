@@ -5,6 +5,8 @@ import {
   TouchableOpacity,
   Dimensions,
   Image,
+  ScrollView,
+  Pressable,
 } from 'react-native';
 import { useState, useEffect } from 'react';
 import { router } from 'expo-router';
@@ -24,20 +26,46 @@ import { AnimatedButton } from '../components/AnimatedButton';
 const { width } = Dimensions.get('window');
 const ease = Easing.bezier(0.25, 0.1, 0.25, 1);
 
-import { Pressable } from 'react-native';
-
-const VIBES = [
-  { id: 'streetwear', label: 'Streetwear', colors: ['#000000', '#2a0845', '#6441A5'] },
-  { id: 'minimalist', label: 'Minimalist', colors: ['#0a0a0a', '#434343', '#000000'] },
-  { id: 'avant-garde', label: 'Avant-Garde', colors: ['#000000', '#1f1c2c', '#928dab'] },
-  { id: 'y2k', label: 'Y2K', colors: ['#0a0a0a', '#ff9a9e', '#fecfef'] },
-  { id: 'old-money', label: 'Old Money', colors: ['#0a0a0a', '#d4af37', '#aa8529'] },
-  { id: 'gorpcore', label: 'Gorpcore', colors: ['#000000', '#2c3e50', '#3498db'] },
-  { id: 'techwear', label: 'Techwear', colors: ['#0a0a0a', '#111111', '#555555'] },
-  { id: 'opium', label: 'Opium', colors: ['#000', '#111', '#ff0000'] },
+const CATEGORIES = [
+  { 
+    id: 'outerwear', 
+    label: 'Outerwear', 
+    desc: 'Jackets, Coats, Blazers',
+    image: 'https://images.unsplash.com/photo-1551028719-00167b16eac5?q=80&w=1000&auto=format&fit=crop'
+  },
+  { 
+    id: 'knitwear', 
+    label: 'Knitwear', 
+    desc: 'Sweaters, Cardigans',
+    image: 'https://images.unsplash.com/photo-1620799140188-3b2a02fd9a77?q=80&w=1000&auto=format&fit=crop'
+  },
+  { 
+    id: 'shirting', 
+    label: 'Shirting', 
+    desc: 'Button-downs, Flannels',
+    image: 'https://images.unsplash.com/photo-1596755094514-f87e34085b2c?q=80&w=1000&auto=format&fit=crop'
+  },
+  { 
+    id: 'tees', 
+    label: 'Tees & Hoodies', 
+    desc: 'Everyday staples',
+    image: 'https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?q=80&w=1000&auto=format&fit=crop'
+  },
+  { 
+    id: 'denim_pants', 
+    label: 'Bottoms', 
+    desc: 'Denim, Trousers, Cargos',
+    image: 'https://images.unsplash.com/photo-1542272454315-4c01d7abdf4a?q=80&w=1000&auto=format&fit=crop'
+  },
+  { 
+    id: 'footwear', 
+    label: 'Footwear', 
+    desc: 'Sneakers, Boots, Loafers',
+    image: 'https://images.unsplash.com/photo-1595950653106-6c9ebd614d3a?q=80&w=1000&auto=format&fit=crop'
+  },
 ];
 
-function VibeCard({ vibe, isSelected, onPress }: { vibe: typeof VIBES[0], isSelected: boolean, onPress: () => void }) {
+function CategoryCard({ category, isSelected, onPress }: { category: typeof CATEGORIES[0], isSelected: boolean, onPress: () => void }) {
   const scale = useSharedValue(1);
 
   const animatedStyle = useAnimatedStyle(() => ({
@@ -55,10 +83,13 @@ function VibeCard({ vibe, isSelected, onPress }: { vibe: typeof VIBES[0], isSele
           isSelected && styles.cardSelected,
         ]}
       >
-        <GradientBackground colors={vibe.colors as [string, string, ...string[]]} />
+        <Image source={{ uri: category.image }} style={styles.cardImage} />
         <View style={styles.cardOverlay}>
           <Text style={[styles.cardLabel, isSelected && styles.cardLabelSelected]}>
-            {vibe.label}
+            {category.label}
+          </Text>
+          <Text style={styles.cardDesc}>
+            {category.desc}
           </Text>
         </View>
       </Pressable>
@@ -66,8 +97,8 @@ function VibeCard({ vibe, isSelected, onPress }: { vibe: typeof VIBES[0], isSele
   );
 }
 
-export default function VibeSetup() {
-  const [selectedVibe, setSelectedVibe] = useState<string | null>(null);
+export default function CategoriesSetup() {
+  const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
 
   const titleOpacity = useSharedValue(0);
@@ -95,57 +126,69 @@ export default function VibeSetup() {
     opacity: ctaOpacity.value,
   }));
 
-  const activeColors = selectedVibe
-    ? VIBES.find((v) => v.id === selectedVibe)?.colors || ['#0a0a0a', '#111', '#000']
-    : ['#0a0a0a', '#111', '#000'];
+  const toggleCategory = (id: string) => {
+    setSelectedCategories((prev) => 
+      prev.includes(id) ? prev.filter((c) => c !== id) : [...prev, id]
+    );
+  };
 
   const handleContinue = async () => {
-    if (!selectedVibe) return;
     setLoading(true);
     const { data } = await supabase.auth.getUser();
     if (data.user) {
-      await updateUserProfile(data.user.id, { aesthetic_vibe: selectedVibe });
+      const { data: userProfile } = await supabase
+        .from('users')
+        .select('fashion_preferences')
+        .eq('id', data.user.id)
+        .single();
+        
+      const currentPrefs = userProfile?.fashion_preferences || {};
+      
+      await updateUserProfile(data.user.id, { 
+        fashion_preferences: { ...currentPrefs, target_categories: selectedCategories } 
+      });
     }
     setLoading(false);
-    // Save to global state or context in the future if needed
-    router.replace('/brands');
+    router.push('/curating');
   };
+
+  const isFormComplete = selectedCategories.length > 0;
 
   return (
     <View style={styles.container}>
-      <GradientBackground colors={activeColors as [string, string, ...string[]]} />
+      <GradientBackground colors={['#0a0a0a', '#0f0f0f', '#000000']} />
       
-      <View style={styles.content}>
+      <ScrollView contentContainerStyle={styles.content}>
         <Animated.View style={titleStyle}>
-          <Text style={styles.stepLabel}>02 — AESTHETIC</Text>
-          <Text style={styles.title}>Choose{'\n'}your vibe.</Text>
+          <Text style={styles.stepLabel}>05 — PRIORITIES</Text>
+          <Text style={styles.title}>What are you{'\n'}hunting for?</Text>
           <Text style={styles.subtitle}>
-            This sets the mood for your discovery experience.
+            Select the pieces you're most interested in discovering right now.
           </Text>
         </Animated.View>
 
         <Animated.View style={[styles.grid, gridStyle]}>
-          {VIBES.map((vibe) => (
-            <VibeCard
-              key={vibe.id}
-              vibe={vibe}
-              isSelected={selectedVibe === vibe.id}
-              onPress={() => setSelectedVibe(vibe.id)}
+          {CATEGORIES.map((cat) => (
+            <CategoryCard
+              key={cat.id}
+              category={cat}
+              isSelected={selectedCategories.includes(cat.id)}
+              onPress={() => toggleCategory(cat.id)}
             />
           ))}
         </Animated.View>
-      </View>
+      </ScrollView>
 
       <Animated.View style={[styles.footer, ctaStyle]}>
         <AnimatedButton
-          title={loading ? 'Saving...' : 'Continue  →'}
+          title={loading ? 'Saving...' : 'Complete Profile  →'}
           onPress={handleContinue}
-          disabled={!selectedVibe || loading}
-          variant={selectedVibe ? 'primary' : 'secondary'}
+          disabled={!isFormComplete || loading}
+          variant={isFormComplete ? 'primary' : 'secondary'}
         />
-        <TouchableOpacity onPress={() => router.replace('/brands')}>
+        <Pressable onPress={() => router.push('/curating')}>
           <Text style={styles.skipText}>Skip for now</Text>
-        </TouchableOpacity>
+        </Pressable>
       </Animated.View>
     </View>
   );
@@ -157,9 +200,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#0a0a0a',
   },
   content: {
-    flex: 1,
     paddingHorizontal: 28,
     paddingTop: 80,
+    paddingBottom: 100,
   },
   stepLabel: {
     fontFamily: 'Syne_600SemiBold',
@@ -170,9 +213,9 @@ const styles = StyleSheet.create({
   },
   title: {
     fontFamily: 'Syne_700Bold',
-    fontSize: 48,
+    fontSize: 44,
     color: '#fff',
-    lineHeight: 54,
+    lineHeight: 50,
     letterSpacing: -1.5,
     marginBottom: 16,
   },
@@ -191,7 +234,7 @@ const styles = StyleSheet.create({
   },
   cardContainer: {
     width: (width - 56 - 16) / 2,
-    aspectRatio: 0.8,
+    aspectRatio: 1,
   },
   card: {
     flex: 1,
@@ -199,14 +242,15 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.1)',
+    backgroundColor: '#111',
   },
   cardSelected: {
     borderColor: '#ffffff',
     borderWidth: 2,
   },
-  cardBg: {
+  cardImage: {
     ...StyleSheet.absoluteFillObject,
-    opacity: 0.6,
+    opacity: 0.5,
   },
   cardOverlay: {
     flex: 1,
@@ -217,17 +261,31 @@ const styles = StyleSheet.create({
   cardLabel: {
     fontFamily: 'Syne_600SemiBold',
     fontSize: 16,
-    color: 'rgba(255,255,255,0.7)',
+    color: 'rgba(255,255,255,0.8)',
+    marginBottom: 4,
   },
   cardLabelSelected: {
     color: '#fff',
+    fontSize: 18,
+  },
+  cardDesc: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 11,
+    color: 'rgba(255,255,255,0.6)',
   },
   footer: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
     paddingHorizontal: 28,
     paddingBottom: 52,
     paddingTop: 16,
     gap: 16,
     alignItems: 'center',
+    backgroundColor: '#0a0a0a',
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.05)',
   },
   skipText: {
     fontFamily: 'Inter_500Medium',

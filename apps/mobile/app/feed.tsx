@@ -34,7 +34,8 @@ const PLACEHOLDER_ITEMS = [
 ];
 
 export default function Feed() {
-  const [products, setProducts] = useState(PLACEHOLDER_ITEMS);
+  const [products, setProducts] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [userId, setUserId] = useState<string | null>(null);
   const translateX = useSharedValue(0);
@@ -45,18 +46,23 @@ export default function Feed() {
       if (data.user) setUserId(data.user.id);
     });
     getProducts().then(({ data }) => {
-      if (data && data.length > 0) setProducts(data as typeof PLACEHOLDER_ITEMS);
+      setProducts(data || []);
+      setLoading(false);
     });
   }, []);
 
   const currentItem = products[currentIndex];
 
   const handleSignal = useCallback(async (type: SignalType) => {
-    if (userId && currentItem) {
-      await recordSignal(userId, currentItem.id, type);
+    if (userId && currentItem && !currentItem.isPlaceholder) {
+      const res = await recordSignal(userId, currentItem.id, type);
+      if (res.error) console.log('Signal tracking error:', res.error);
     }
     if (currentIndex < products.length - 1) {
       setCurrentIndex(i => i + 1);
+    } else {
+      // Reached the end
+      setCurrentIndex(i => i + 1); 
     }
   }, [currentIndex, currentItem, userId, products.length]);
 
@@ -111,6 +117,14 @@ export default function Feed() {
   const saveOverlayStyle = useAnimatedStyle(() => ({
     opacity: interpolate(translateY.value, [-80, 0], [1, 0], Extrapolation.CLAMP),
   }));
+
+  if (loading) {
+     return (
+       <View style={styles.emptyContainer}>
+         <Text style={styles.emptyTitle}>Loading Feed...</Text>
+       </View>
+     );
+  }
 
   if (!currentItem) {
     return (

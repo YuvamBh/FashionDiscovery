@@ -17,7 +17,7 @@ import Animated, {
   Easing,
 } from 'react-native-reanimated';
 import { supabase } from '../lib/supabase';
-import { mergeTasteProfile } from '../lib/users';
+import { updateUserProfile } from '../lib/users';
 import { GradientBackground } from '../components/GradientBackground';
 import { AnimatedButton } from '../components/AnimatedButton';
 
@@ -58,7 +58,7 @@ export default function NameSetup() {
     setLoading(true);
     const { data } = await supabase.auth.getUser();
     if (data.user) {
-      await mergeTasteProfile(data.user.id, { name: trimmed });
+      await updateUserProfile(data.user.id, { full_name: trimmed });
     }
     setLoading(false);
     // Move to the new vibe selection screen

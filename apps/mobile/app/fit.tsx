@@ -5,6 +5,8 @@ import {
   TouchableOpacity,
   Dimensions,
   Image,
+  ScrollView,
+  Pressable,
 } from 'react-native';
 import { useState, useEffect } from 'react';
 import { router } from 'expo-router';
@@ -24,20 +26,34 @@ import { AnimatedButton } from '../components/AnimatedButton';
 const { width } = Dimensions.get('window');
 const ease = Easing.bezier(0.25, 0.1, 0.25, 1);
 
-import { Pressable } from 'react-native';
-
-const VIBES = [
-  { id: 'streetwear', label: 'Streetwear', colors: ['#000000', '#2a0845', '#6441A5'] },
-  { id: 'minimalist', label: 'Minimalist', colors: ['#0a0a0a', '#434343', '#000000'] },
-  { id: 'avant-garde', label: 'Avant-Garde', colors: ['#000000', '#1f1c2c', '#928dab'] },
-  { id: 'y2k', label: 'Y2K', colors: ['#0a0a0a', '#ff9a9e', '#fecfef'] },
-  { id: 'old-money', label: 'Old Money', colors: ['#0a0a0a', '#d4af37', '#aa8529'] },
-  { id: 'gorpcore', label: 'Gorpcore', colors: ['#000000', '#2c3e50', '#3498db'] },
-  { id: 'techwear', label: 'Techwear', colors: ['#0a0a0a', '#111111', '#555555'] },
-  { id: 'opium', label: 'Opium', colors: ['#000', '#111', '#ff0000'] },
+const FITS = [
+  { 
+    id: 'oversized', 
+    label: 'Oversized', 
+    desc: 'Relaxed, baggy, loose',
+    image: 'https://images.unsplash.com/photo-1549439602-43ebca2327af?q=80&w=1000&auto=format&fit=crop'
+  },
+  { 
+    id: 'tailored', 
+    label: 'Tailored', 
+    desc: 'Slim, clean, precise',
+    image: 'https://images.unsplash.com/photo-1594938298603-c8148c4dae35?q=80&w=1000&auto=format&fit=crop'
+  },
+  { 
+    id: 'cropped', 
+    label: 'Cropped', 
+    desc: 'Boxy, high-waisted',
+    image: 'https://images.unsplash.com/photo-1620799140408-edc6dcb6d633?q=80&w=1000&auto=format&fit=crop'
+  },
+  { 
+    id: 'skinny', 
+    label: 'Fitted', 
+    desc: 'Body-con, tight, skinny',
+    image: 'https://images.unsplash.com/photo-1512411516053-5d519d5c8a24?q=80&w=1000&auto=format&fit=crop'
+  },
 ];
 
-function VibeCard({ vibe, isSelected, onPress }: { vibe: typeof VIBES[0], isSelected: boolean, onPress: () => void }) {
+function FitCard({ fit, isSelected, onPress }: { fit: typeof FITS[0], isSelected: boolean, onPress: () => void }) {
   const scale = useSharedValue(1);
 
   const animatedStyle = useAnimatedStyle(() => ({
@@ -55,10 +71,13 @@ function VibeCard({ vibe, isSelected, onPress }: { vibe: typeof VIBES[0], isSele
           isSelected && styles.cardSelected,
         ]}
       >
-        <GradientBackground colors={vibe.colors as [string, string, ...string[]]} />
+        <Image source={{ uri: fit.image }} style={styles.cardImage} />
         <View style={styles.cardOverlay}>
           <Text style={[styles.cardLabel, isSelected && styles.cardLabelSelected]}>
-            {vibe.label}
+            {fit.label}
+          </Text>
+          <Text style={styles.cardDesc}>
+            {fit.desc}
           </Text>
         </View>
       </Pressable>
@@ -66,8 +85,8 @@ function VibeCard({ vibe, isSelected, onPress }: { vibe: typeof VIBES[0], isSele
   );
 }
 
-export default function VibeSetup() {
-  const [selectedVibe, setSelectedVibe] = useState<string | null>(null);
+export default function FitSetup() {
+  const [selectedFit, setSelectedFit] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   const titleOpacity = useSharedValue(0);
@@ -95,57 +114,62 @@ export default function VibeSetup() {
     opacity: ctaOpacity.value,
   }));
 
-  const activeColors = selectedVibe
-    ? VIBES.find((v) => v.id === selectedVibe)?.colors || ['#0a0a0a', '#111', '#000']
-    : ['#0a0a0a', '#111', '#000'];
-
   const handleContinue = async () => {
-    if (!selectedVibe) return;
+    if (!selectedFit) return;
     setLoading(true);
     const { data } = await supabase.auth.getUser();
     if (data.user) {
-      await updateUserProfile(data.user.id, { aesthetic_vibe: selectedVibe });
+      const { data: userProfile } = await supabase
+        .from('users')
+        .select('fashion_preferences')
+        .eq('id', data.user.id)
+        .single();
+        
+      const currentPrefs = userProfile?.fashion_preferences || {};
+      
+      await updateUserProfile(data.user.id, { 
+        fashion_preferences: { ...currentPrefs, fit: selectedFit } 
+      });
     }
     setLoading(false);
-    // Save to global state or context in the future if needed
-    router.replace('/brands');
+    router.push('/categories');
   };
 
   return (
     <View style={styles.container}>
-      <GradientBackground colors={activeColors as [string, string, ...string[]]} />
+      <GradientBackground colors={['#0a0a0a', '#0f0f0f', '#000000']} />
       
-      <View style={styles.content}>
+      <ScrollView contentContainerStyle={styles.content}>
         <Animated.View style={titleStyle}>
-          <Text style={styles.stepLabel}>02 — AESTHETIC</Text>
-          <Text style={styles.title}>Choose{'\n'}your vibe.</Text>
+          <Text style={styles.stepLabel}>04 — SILHOUETTE</Text>
+          <Text style={styles.title}>How should{'\n'}it fit?</Text>
           <Text style={styles.subtitle}>
-            This sets the mood for your discovery experience.
+            Your silhouette defines your proportions.
           </Text>
         </Animated.View>
 
         <Animated.View style={[styles.grid, gridStyle]}>
-          {VIBES.map((vibe) => (
-            <VibeCard
-              key={vibe.id}
-              vibe={vibe}
-              isSelected={selectedVibe === vibe.id}
-              onPress={() => setSelectedVibe(vibe.id)}
+          {FITS.map((fit) => (
+            <FitCard
+              key={fit.id}
+              fit={fit}
+              isSelected={selectedFit === fit.id}
+              onPress={() => setSelectedFit(fit.id)}
             />
           ))}
         </Animated.View>
-      </View>
+      </ScrollView>
 
       <Animated.View style={[styles.footer, ctaStyle]}>
         <AnimatedButton
           title={loading ? 'Saving...' : 'Continue  →'}
           onPress={handleContinue}
-          disabled={!selectedVibe || loading}
-          variant={selectedVibe ? 'primary' : 'secondary'}
+          disabled={!selectedFit || loading}
+          variant={selectedFit ? 'primary' : 'secondary'}
         />
-        <TouchableOpacity onPress={() => router.replace('/brands')}>
+        <Pressable onPress={() => router.push('/categories')}>
           <Text style={styles.skipText}>Skip for now</Text>
-        </TouchableOpacity>
+        </Pressable>
       </Animated.View>
     </View>
   );
@@ -157,9 +181,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#0a0a0a',
   },
   content: {
-    flex: 1,
     paddingHorizontal: 28,
     paddingTop: 80,
+    paddingBottom: 100,
   },
   stepLabel: {
     fontFamily: 'Syne_600SemiBold',
@@ -170,9 +194,9 @@ const styles = StyleSheet.create({
   },
   title: {
     fontFamily: 'Syne_700Bold',
-    fontSize: 48,
+    fontSize: 44,
     color: '#fff',
-    lineHeight: 54,
+    lineHeight: 50,
     letterSpacing: -1.5,
     marginBottom: 16,
   },
@@ -191,7 +215,7 @@ const styles = StyleSheet.create({
   },
   cardContainer: {
     width: (width - 56 - 16) / 2,
-    aspectRatio: 0.8,
+    aspectRatio: 0.85,
   },
   card: {
     flex: 1,
@@ -199,35 +223,50 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.1)',
+    backgroundColor: '#111',
   },
   cardSelected: {
     borderColor: '#ffffff',
     borderWidth: 2,
   },
-  cardBg: {
+  cardImage: {
     ...StyleSheet.absoluteFillObject,
-    opacity: 0.6,
+    opacity: 0.5,
   },
   cardOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
+    backgroundColor: 'rgba(0,0,0,0.3)',
     padding: 16,
     justifyContent: 'flex-end',
   },
   cardLabel: {
     fontFamily: 'Syne_600SemiBold',
     fontSize: 16,
-    color: 'rgba(255,255,255,0.7)',
+    color: 'rgba(255,255,255,0.8)',
+    marginBottom: 4,
   },
   cardLabelSelected: {
     color: '#fff',
+    fontSize: 18,
+  },
+  cardDesc: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 11,
+    color: 'rgba(255,255,255,0.6)',
   },
   footer: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
     paddingHorizontal: 28,
     paddingBottom: 52,
     paddingTop: 16,
     gap: 16,
     alignItems: 'center',
+    backgroundColor: '#0a0a0a',
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.05)',
   },
   skipText: {
     fontFamily: 'Inter_500Medium',

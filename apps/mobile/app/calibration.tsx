@@ -6,7 +6,7 @@ import {
   StyleSheet,
   Dimensions,
 } from 'react-native';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { router } from 'expo-router';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
@@ -19,37 +19,40 @@ import Animated, {
   Extrapolation,
 } from 'react-native-reanimated';
 import { supabase } from '../lib/supabase';
+import { getProducts } from '../lib/products';
 import { recordSignal } from '../lib/signals';
 
 const { width, height } = Dimensions.get('window');
 
-const SAMPLE_ITEMS = [
-  { id: '1', image: 'https://picsum.photos/500/700?random=1', brand: 'STUDIO.NOIR', category: 'Oversized Blazer' },
-  { id: '2', image: 'https://picsum.photos/500/700?random=2', brand: 'VOID.STUDIO', category: 'Minimal Tee' },
-  { id: '3', image: 'https://picsum.photos/500/700?random=3', brand: 'BLANC', category: 'Linen Shirt' },
-  { id: '4', image: 'https://picsum.photos/500/700?random=4', brand: 'KAALA', category: 'Streetwear Hoodie' },
-  { id: '5', image: 'https://picsum.photos/500/700?random=5', brand: 'RUHAAN', category: 'Printed Jacket' },
-  { id: '6', image: 'https://picsum.photos/500/700?random=6', brand: 'MONO', category: 'Wide Trousers' },
-  { id: '7', image: 'https://picsum.photos/500/700?random=7', brand: 'ATELIER', category: 'Knit Sweater' },
-  { id: '8', image: 'https://picsum.photos/500/700?random=8', brand: 'FORM', category: 'Cargo Pants' },
-  { id: '9', image: 'https://picsum.photos/500/700?random=9', brand: 'EDGE', category: 'Bomber Jacket' },
-  { id: '10', image: 'https://picsum.photos/500/700?random=10', brand: 'NEXUS', category: 'Tech Vest' },
-];
-
 export default function Calibration() {
+  const [items, setItems] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
   const [currentIndex, setCurrentIndex] = useState(0);
   const translateX = useSharedValue(0);
   const cardOpacity = useSharedValue(1);
 
-  const currentItem = SAMPLE_ITEMS[currentIndex];
-  const progress = (currentIndex / SAMPLE_ITEMS.length) * 100;
+  useEffect(() => {
+    // For calibration, let's just fetch 10 items
+    getProducts(10).then(({ data }) => {
+      if (data) setItems(data);
+      setLoading(false);
+    });
+  }, []);
+
+  const currentItem = items[currentIndex];
+  // Calculate progress based on items available, minimum 1 to avoid NaN
+  const safeLength = items.length || 1;
+  const progress = (currentIndex / safeLength) * 100;
 
   const handleNext = async (type: 'skip' | 'interest') => {
-    const { data } = await supabase.auth.getUser();
-    if (data.user) {
-      await recordSignal(data.user.id, currentItem.id, type);
+    if (currentItem && !currentItem.isPlaceholder) {
+      const { data } = await supabase.auth.getUser();
+      if (data.user) {
+        await recordSignal(data.user.id, currentItem.id, type);
+      }
     }
-    if (currentIndex >= SAMPLE_ITEMS.length - 1) {
+    
+    if (currentIndex >= items.length - 1) {
       router.replace('/feed');
     } else {
       setCurrentIndex(i => i + 1);
@@ -103,6 +106,25 @@ export default function Calibration() {
     opacity: interpolate(translateX.value, [-80, 0], [1, 0], Extrapolation.CLAMP),
   }));
 
+  if (loading) {
+    return (
+      <View style={[styles.container, { justifyContent: 'center' }]}>
+        <Text style={{ color: '#fff', fontSize: 16 }}>Loading Calibration...</Text>
+      </View>
+    );
+  }
+
+  if (!currentItem) {
+    return (
+      <View style={[styles.container, { justifyContent: 'center' }]}>
+        <Text style={{ color: '#fff', fontSize: 16 }}>No items to display</Text>
+        <TouchableOpacity onPress={() => router.replace('/feed')} style={{ marginTop: 20 }}>
+          <Text style={{ color: '#444', fontSize: 14 }}>Skip to Feed</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
       <View style={styles.header}>
@@ -110,12 +132,12 @@ export default function Calibration() {
         <View style={styles.progressBar}>
           <View style={[styles.progressFill, { width: `${progress}%` }]} />
         </View>
-        <Text style={styles.counter}>{currentIndex + 1} / {SAMPLE_ITEMS.length}</Text>
+        <Text style={styles.counter}>{currentIndex + 1} / {items.length}</Text>
       </View>
 
       <GestureDetector gesture={gesture}>
         <Animated.View style={[styles.card, animatedStyle]}>
-          <Image source={{ uri: currentItem.image }} style={styles.image} />
+          <Image source={{ uri: currentItem.images?.[0] }} style={styles.image} />
 
           <Animated.View style={[styles.badge, styles.badgeRight, likeOverlayStyle]}>
             <Text style={styles.badgeText}>YES</Text>
@@ -125,8 +147,8 @@ export default function Calibration() {
           </Animated.View>
 
           <View style={styles.cardInfo}>
-            <Text style={styles.brandName}>{currentItem.brand}</Text>
-            <Text style={styles.itemName}>{currentItem.category}</Text>
+            <Text style={styles.brandName}>{currentItem.brands?.name || 'Brand'}</Text>
+            <Text style={styles.itemName}>{currentItem.category || currentItem.name}</Text>
           </View>
         </Animated.View>
       </GestureDetector>
