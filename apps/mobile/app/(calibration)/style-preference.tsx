@@ -1,87 +1,80 @@
 import { View, Text, StyleSheet, ScrollView, Pressable } from 'react-native';
 import { router } from 'expo-router';
-import Animated, { useSharedValue, useAnimatedStyle, withSpring } from 'react-native-reanimated';
 import { GradientBackground } from '../../components/GradientBackground';
 import { AnimatedButton } from '../../components/AnimatedButton';
 import { ProgressHeader } from '../../components/calibration/ProgressHeader';
 import { useCalibrationStore } from '../../store/calibrationStore';
+import { colors, fonts, size, space, tracking } from '../../lib/tokens';
 
-const STYLES = [
-  'Minimal', 'Streetwear', 'Elevated basics', 'Vintage', 
-  'Luxury', 'Sporty', 'Clean classic', 'Avant-garde', 
-  'Bold / experimental', 'Feminine', 'Masculine', 'Neutral / unisex'
+const OPTIONS = [
+  'Quiet / Considered',
+  'Dark / Charged',
+  'Deconstructed',
+  'Sharp / Tailored',
+  'Soft / Draped',
+  'Raw / Utility',
+  'Editorial',
+  'Avant-garde',
 ];
 
-function StylePill({ label, isSelected, onPress }: { label: string, isSelected: boolean, onPress: () => void }) {
-  const scale = useSharedValue(1);
-  const animatedStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: scale.value }]
-  }));
-
-  return (
-    <Animated.View style={animatedStyle}>
-      <Pressable
-        onPressIn={() => scale.value = withSpring(0.95)}
-        onPressOut={() => scale.value = withSpring(1)}
-        onPress={onPress}
-        style={[styles.pill, isSelected && styles.pillSelected]}
-      >
-        <Text style={[styles.pillText, isSelected && styles.pillTextSelected]}>
-          {label}
-        </Text>
-      </Pressable>
-    </Animated.View>
-  );
-}
+const MAX = 3;
 
 export default function StylePreferenceScreen() {
   const { preferredStyles, setPreferredStyles } = useCalibrationStore();
 
-  const toggleStyle = (style: string) => {
-    if (preferredStyles.includes(style)) {
-      setPreferredStyles(preferredStyles.filter(s => s !== style));
-    } else {
-      setPreferredStyles([...preferredStyles, style]);
+  const toggle = (option: string) => {
+    if (preferredStyles.includes(option)) {
+      setPreferredStyles(preferredStyles.filter((s) => s !== option));
+    } else if (preferredStyles.length < MAX) {
+      setPreferredStyles([...preferredStyles, option]);
     }
   };
 
-  const handleContinue = () => {
-    router.push('/(calibration)/brand-affinity');
-  };
-
-  const isComplete = preferredStyles.length > 0;
+  const atMax = preferredStyles.length >= MAX;
 
   return (
     <View style={styles.container}>
-      <GradientBackground colors={['#050505', '#111', '#050505']} />
+      <GradientBackground colors={['#050505', '#111111', '#050505']} />
       <ProgressHeader currentStep={1} />
-      
-      <ScrollView contentContainerStyle={styles.content}>
-        <Text style={styles.title}>What kind of style are you naturally drawn to?</Text>
-        <Text style={styles.subtitle}>Select all that apply.</Text>
+
+      <ScrollView
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+      >
+        <Text style={styles.question}>{"What pulls\nyou in?"}</Text>
+        <Text style={styles.subtext}>The energy you're drawn to. Pick up to 3.</Text>
 
         <View style={styles.grid}>
-          {STYLES.map((style) => (
-            <StylePill
-              key={style}
-              label={style}
-              isSelected={preferredStyles.includes(style)}
-              onPress={() => toggleStyle(style)}
-            />
-          ))}
+          {OPTIONS.map((option) => {
+            const selected = preferredStyles.includes(option);
+            const dimmed = atMax && !selected;
+            return (
+              <Pressable
+                key={option}
+                onPress={() => toggle(option)}
+                disabled={dimmed}
+                style={[
+                  styles.pill,
+                  selected && styles.pillSelected,
+                  dimmed && styles.pillDimmed,
+                ]}
+              >
+                <Text style={[styles.pillText, selected && styles.pillTextSelected]}>
+                  {option}
+                </Text>
+              </Pressable>
+            );
+          })}
         </View>
       </ScrollView>
 
       <View style={styles.footer}>
         <AnimatedButton
           title="Continue →"
-          onPress={handleContinue}
-          disabled={!isComplete}
-          variant={isComplete ? 'primary' : 'secondary'}
+          onPress={() => router.push('/(calibration)/brand-affinity')}
+          disabled={preferredStyles.length === 0}
+          variant={preferredStyles.length > 0 ? 'primary' : 'secondary'}
         />
-        <Pressable onPress={() => router.push('/(calibration)/brand-affinity')}>
-          <Text style={styles.skipText}>Skip</Text>
-        </Pressable>
       </View>
     </View>
   );
@@ -90,62 +83,60 @@ export default function StylePreferenceScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0a0a0a',
+    backgroundColor: colors.bg.primary,
   },
   content: {
-    paddingHorizontal: 28,
-    paddingTop: 20,
-    paddingBottom: 100,
+    paddingHorizontal: space[7],
+    paddingTop: space[4],
+    paddingBottom: 120,
   },
-  title: {
-    fontFamily: 'Syne_700Bold',
-    fontSize: 36,
-    color: '#fff',
-    lineHeight: 42,
-    letterSpacing: -1,
-    marginBottom: 12,
+  question: {
+    fontFamily: fonts.display,
+    fontSize: size.xxxl,
+    color: colors.text.primary,
+    letterSpacing: tracking.tight,
+    lineHeight: 48,
   },
-  subtitle: {
-    fontFamily: 'Inter_400Regular',
-    fontSize: 16,
-    color: 'rgba(255,255,255,0.6)',
-    marginBottom: 40,
+  subtext: {
+    fontFamily: fonts.body,
+    fontSize: size.base,
+    color: colors.text.tertiary,
+    marginTop: space[3],
+    marginBottom: space[8],
   },
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 12,
+    gap: space[3],
   },
   pill: {
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.15)',
-    borderRadius: 30,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border.default,
     paddingVertical: 14,
-    paddingHorizontal: 20,
-    backgroundColor: 'rgba(255,255,255,0.05)',
+    paddingHorizontal: space[5],
   },
   pillSelected: {
-    backgroundColor: '#fff',
-    borderColor: '#fff',
+    borderColor: colors.text.primary,
+  },
+  pillDimmed: {
+    opacity: 0.3,
   },
   pillText: {
-    fontFamily: 'Inter_500Medium',
-    fontSize: 15,
-    color: 'rgba(255,255,255,0.8)',
+    fontFamily: fonts.bodyMedium,
+    fontSize: size.base,
+    color: colors.text.tertiary,
   },
   pillTextSelected: {
-    color: '#000',
+    color: colors.text.primary,
   },
   footer: {
-    paddingHorizontal: 28,
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    paddingHorizontal: space[7],
     paddingBottom: 52,
-    paddingTop: 16,
-    gap: 16,
-    alignItems: 'center',
-  },
-  skipText: {
-    fontFamily: 'Inter_500Medium',
-    color: 'rgba(255,255,255,0.5)',
-    fontSize: 13,
+    paddingTop: space[4],
+    backgroundColor: colors.bg.primary,
   },
 });

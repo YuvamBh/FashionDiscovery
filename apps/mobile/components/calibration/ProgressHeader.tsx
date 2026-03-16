@@ -1,29 +1,24 @@
 import { View, Text, StyleSheet, Pressable } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
+import { colors, fonts, size, space, tracking } from '../../lib/tokens';
 
 interface ProgressHeaderProps {
   currentStep: number;
   totalSteps?: number;
 }
 
-export function ProgressHeader({ currentStep, totalSteps = 8 }: ProgressHeaderProps) {
-  // Simple width calculation for the progress bar
-  const progressPercent = (currentStep / totalSteps) * 100;
+export function ProgressHeader({ currentStep, totalSteps = 3 }: ProgressHeaderProps) {
+  const insets = useSafeAreaInsets();
 
   return (
-    <View style={styles.container}>
-      <Pressable onPress={() => router.back()} style={styles.backButton}>
-        <Text style={styles.backButtonText}>← Back</Text>
+    <View style={[styles.container, { paddingTop: insets.top + space[3] }]}>
+      <Pressable onPress={() => router.back()} hitSlop={16}>
+        <Text style={styles.back}>←</Text>
       </Pressable>
-      
-      <View style={styles.progressContainer}>
-        <View style={styles.progressBarBg}>
-          <View style={[styles.progressBarFill, { width: `${progressPercent}%` }]} />
-        </View>
-        <Text style={styles.progressText}>
-          {currentStep} / {totalSteps}
-        </Text>
-      </View>
+      <Text style={styles.counter}>
+        {currentStep} — {totalSteps}
+      </Text>
     </View>
   );
 }
@@ -33,42 +28,18 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 28,
-    paddingTop: 60, // Account for notch
-    paddingBottom: 20,
-    backgroundColor: '#0a0a0a',
-    zIndex: 10,
+    paddingHorizontal: space[7],
+    paddingBottom: space[5],
   },
-  backButton: {
-    paddingVertical: 8,
-    paddingRight: 16,
+  back: {
+    fontFamily: fonts.body,
+    fontSize: size.xl,
+    color: colors.text.secondary,
   },
-  backButtonText: {
-    fontFamily: 'Inter_500Medium',
-    fontSize: 14,
-    color: 'rgba(255,255,255,0.6)',
-  },
-  progressContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  progressBarBg: {
-    width: 60,
-    height: 4,
-    backgroundColor: 'rgba(255,255,255,0.1)',
-    borderRadius: 2,
-    overflow: 'hidden',
-  },
-  progressBarFill: {
-    height: '100%',
-    backgroundColor: '#ffffff',
-    borderRadius: 2,
-  },
-  progressText: {
-    fontFamily: 'Syne_600SemiBold',
-    fontSize: 12,
-    color: 'rgba(255,255,255,0.4)',
-    letterSpacing: 1,
+  counter: {
+    fontFamily: fonts.body,
+    fontSize: size.xs,
+    color: colors.text.tertiary,
+    letterSpacing: tracking.widest,
   },
 });

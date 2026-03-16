@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import {
   View,
   Text,
@@ -7,57 +8,62 @@ import {
 } from 'react-native';
 import { router } from 'expo-router';
 import { GradientBackground } from '../../components/GradientBackground';
-import { AnimatedButton } from '../../components/AnimatedButton';
-// import * as WebBrowser from 'expo-web-browser';
-// import { supabase } from '../../lib/supabase';
-
-// Setup for Google Auth later
-// WebBrowser.maybeCompleteAuthSession();
+import { signInWithGoogle, getCurrentUser } from '../../lib/auth';
+import { getUserProfile } from '../../lib/users';
+import { fonts, size } from '../../lib/tokens';
 
 export default function AuthScreen() {
-  
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
   const handleGoogleAuth = async () => {
-    // TODO: Wire up actual Supabase OAuth here
-    // For now we will mock a successful auth flow that pushes to the profile setup
-    console.log("Mocking Google OAuth flow...");
-    router.replace('/name-setup');
+    setLoading(true);
+    setError(null);
+    const { error } = await signInWithGoogle();
+    if (error) {
+      setLoading(false);
+      setError(error?.message ?? 'Sign in failed. Try again.');
+      return;
+    }
+    const user = await getCurrentUser();
+    if (user) {
+      const { data: profile } = await getUserProfile(user.id);
+      router.replace(profile?.calibration_completed ? '/feed' : '/(calibration)/style-preference');
+    }
+    setLoading(false);
   };
 
-  const handlePhoneAuth = () => {
-    // Navigate to the dedicated phone number entry screen
-    router.push('/(auth)/phone');
-  };
 
   return (
     <View style={styles.container}>
       <GradientBackground colors={['#0a0a0a', '#111111', '#050505']} />
-      
+
       <View style={styles.content}>
         <View style={styles.header}>
           <Text style={styles.title}>Join the next{'\n'}wave of discovery.</Text>
           <Text style={styles.subtitle}>
-            Sign in to save your taste, personalize your feed, and shape future drops.
+            Sign in with Google to save your taste and shape what gets made.
           </Text>
         </View>
 
         <View style={styles.actions}>
-          <TouchableOpacity 
-            style={styles.googleButton} 
+          <TouchableOpacity
+            style={[styles.googleButton, loading && { opacity: 0.7 }]}
             activeOpacity={0.8}
             onPress={handleGoogleAuth}
+            disabled={loading}
           >
-            {/* Using a placeholder character for Google icon since we don't have SVGs installed yet */}
             <View style={styles.googleIconPlaceholder}>
               <Text style={styles.googleIconText}>G</Text>
             </View>
-            <Text style={styles.googleButtonText}>Continue with Google</Text>
+            <Text style={styles.googleButtonText}>
+              {loading ? 'Signing in...' : 'Continue with Google'}
+            </Text>
           </TouchableOpacity>
 
-          <AnimatedButton 
-            title="Continue with phone number" 
-            onPress={handlePhoneAuth}
-            variant="secondary"
-          />
+          {error && (
+            <Text style={styles.errorText}>{error}</Text>
+          )}
         </View>
       </View>
 
@@ -132,6 +138,13 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter_600SemiBold',
     fontSize: 15,
     color: '#000000',
+  },
+  errorText: {
+    fontFamily: fonts.body,
+    fontSize: size.xs,
+    color: '#8A4A4A',
+    marginTop: 8,
+    textAlign: 'center',
   },
   footer: {
     paddingHorizontal: 28,

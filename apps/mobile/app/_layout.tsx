@@ -1,7 +1,8 @@
 import { useEffect } from 'react';
-import { Stack, SplashScreen } from 'expo-router';
+import { Stack, SplashScreen, router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { supabase } from '../lib/supabase';
 import {
   useFonts,
   Syne_400Regular,
@@ -38,6 +39,36 @@ export default function RootLayout() {
     }
   }, [fontsLoaded, fontError]);
 
+  useEffect(() => {
+    // Only register after fonts are ready so NavigationContainer is mounted
+    if (!fontsLoaded && !fontError) return;
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (event: string, session: { user: { id: string } } | null) => {
+        console.log('[Layout] Auth event:', event);
+        if (event === 'SIGNED_IN' && session?.user) {
+          void (async () => {
+            const { data } = await supabase
+              .from('users')
+              .select('calibration_completed')
+              .eq('id', session.user.id)
+              .single();
+
+            if (data?.calibration_completed) {
+              router.replace('/feed');
+            } else {
+              router.replace('/(calibration)/style-preference');
+            }
+          })();
+        }
+        if (event === 'SIGNED_OUT') {
+          router.replace('/');
+        }
+      }
+    );
+    return () => subscription.unsubscribe();
+  }, [fontsLoaded, fontError]);
+
   if (!fontsLoaded && !fontError) {
     return null;
   }
@@ -64,7 +95,10 @@ export default function RootLayout() {
         <Stack.Screen name="categories" options={{ animation: 'slide_from_right' }} />
         <Stack.Screen name="curating" options={{ animation: 'fade' }} />
         <Stack.Screen name="calibration" options={{ animation: 'slide_from_right' }} />
+        <Stack.Screen name="tuned-in" options={{ animation: 'fade' }} />
         <Stack.Screen name="feed" options={{ animation: 'fade' }} />
+        <Stack.Screen name="moodboard" options={{ animation: 'fade' }} />
+        <Stack.Screen name="item/[id]" options={{ animation: 'fade' }} />
         <Stack.Screen name="profile" options={{ animation: 'slide_from_right' }} />
       </Stack>
     </GestureHandlerRootView>

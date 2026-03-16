@@ -80,3 +80,6 @@ Desktop.ini
 
 # Project specific dev files
 PROGRESS*.md
+.scratch/
+*.sql
+*.scratch.md

@@ -15,6 +15,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
 import { supabase } from '../lib/supabase';
+import { getUserProfile } from '../lib/users';
 import { AnimatedButton } from '../components/AnimatedButton';
 
 const ease = Easing.bezier(0.25, 0.1, 0.25, 1);
@@ -28,13 +29,13 @@ export default function SplashScreen() {
 
   useEffect(() => {
     // Check if the user is already authenticated
-    supabase.auth.getSession().then(({ data }) => {
+    (async () => {
+      const { data } = await supabase.auth.getSession();
       if (data.session?.user) {
-        // Automatically route authed users straight to feed
-        // Using replace so they can't go "back" to Splash
-        router.replace('/feed');
+        const { data: profile } = await getUserProfile(data.session.user.id);
+        router.replace(profile?.calibration_completed ? '/feed' : '/(calibration)/style-preference');
       }
-    });
+    })();
 
     titleOpacity.value = withTiming(1, { duration: 800, easing: ease });
     titleY.value = withTiming(0, { duration: 800, easing: ease });

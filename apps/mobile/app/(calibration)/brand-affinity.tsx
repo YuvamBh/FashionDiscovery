@@ -1,107 +1,157 @@
-import { View, Text, StyleSheet, ScrollView, TextInput, Pressable, KeyboardAvoidingView, Platform, Keyboard, TouchableWithoutFeedback } from 'react-native';
-import { useState, useMemo } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import {
+  View,
+  Text,
+  TextInput,
+  ScrollView,
+  Pressable,
+  StyleSheet,
+} from 'react-native';
 import { router } from 'expo-router';
 import { GradientBackground } from '../../components/GradientBackground';
 import { AnimatedButton } from '../../components/AnimatedButton';
 import { ProgressHeader } from '../../components/calibration/ProgressHeader';
 import { useCalibrationStore } from '../../store/calibrationStore';
-
-// Extended searchable list
-const BRAND_DATABASE = [
-  'Nike', 'Adidas', 'New Balance', 'Salomon', 'Asics', 
-  'Arc\'teryx', 'The North Face', 'Patagonia',
-  'Acne Studios', 'Aime Leon Dore', 'Stussy', 'Supreme', 'Carhartt WIP',
-  'Rick Owens', 'Balenciaga', 'Bottega Veneta', 'Jil Sander', 'Prada',
-  'Maison Margiela', 'Chrome Hearts', 'Our Legacy', 'Vivienne Westwood',
-  'Kith', 'Brain Dead', 'A-COLD-WALL*', 'Fear of God', 'Off-White',
-  'Loewe', 'Marni', 'Jacquemus', 'A.P.C.', 'Ami Paris'
-];
+import { searchBrands, requestBrand, Brand } from '../../lib/brands';
+import { supabase } from '../../lib/supabase';
+import { colors, fonts, size, space, tracking } from '../../lib/tokens';
 
 export default function BrandAffinityScreen() {
   const { brandAffinity, setBrandAffinity } = useCalibrationStore();
-  const [searchQuery, setSearchQuery] = useState('');
+  const [query, setQuery] = useState('');
+  const [brands, setBrands] = useState<Brand[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [requesting, setRequesting] = useState(false);
+  const [requested, setRequested] = useState(false);
+  const [selected, setSelected] = useState<string[]>(brandAffinity);
+  const [userId, setUserId] = useState<string | null>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const filteredBrands = useMemo(() => {
-    if (!searchQuery.trim()) return BRAND_DATABASE.slice(0, 15); // Show suggestions by default
-    return BRAND_DATABASE.filter(b => b.toLowerCase().includes(searchQuery.toLowerCase()));
-  }, [searchQuery]);
+  useEffect(() => {
+    (async () => {
+      const { data: authData } = await supabase.auth.getUser();
+      setUserId(authData.user?.id ?? null);
+      const { data: brandData } = await searchBrands('');
+      setBrands(brandData);
+      setLoading(false);
+    })();
+  }, []);
 
-  const toggleBrand = (brand: string) => {
-    Keyboard.dismiss();
-    if (brandAffinity.includes(brand)) {
-      setBrandAffinity(brandAffinity.filter(b => b !== brand));
-    } else {
-      setBrandAffinity([...brandAffinity, brand]);
-    }
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(async () => {
+      setLoading(true);
+      const { data } = await searchBrands(query);
+      setBrands(data);
+      setLoading(false);
+    }, 300);
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, [query]);
+
+  const showNotFound = query.trim().length >= 2 && brands.length === 0 && !loading;
+
+  const toggle = (name: string) => {
+    setSelected((prev) =>
+      prev.includes(name) ? prev.filter((b) => b !== name) : [...prev, name],
+    );
+  };
+
+  const handleRequest = async () => {
+    if (!userId) return;
+    setRequesting(true);
+    await requestBrand(query, userId);
+    setRequesting(false);
+    setRequested(true);
   };
 
   const handleContinue = () => {
-    router.push('/(calibration)/current-wardrobe');
+    setBrandAffinity(selected);
+    router.push('/(calibration)/visual-vibe');
   };
-
-  const isComplete = brandAffinity.length > 0;
 
   return (
     <View style={styles.container}>
-      <GradientBackground colors={['#050505', '#111', '#050505']} />
+      <GradientBackground colors={['#050505', '#111111', '#050505']} />
       <ProgressHeader currentStep={2} />
-      
-      <KeyboardAvoidingView style={styles.innerContainer} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-          <Text style={styles.title}>Which brands feel most like you?</Text>
-          <Text style={styles.subtitle}>Brands you wear, or brands you admire.</Text>
 
-          <View style={styles.searchContainer}>
-            <TextInput
-              style={styles.searchInput}
-              placeholder="Search brands..."
-              placeholderTextColor="rgba(255,255,255,0.3)"
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-              autoCorrect={false}
-            />
-          </View>
+      <ScrollView
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
+        <Text style={styles.question}>Which of these{'\n'}feels like you?</Text>
+        <Text style={styles.subtext}>Not about price. About energy.</Text>
 
-          {brandAffinity.length > 0 && (
-            <View style={styles.selectedSection}>
-              <Text style={styles.sectionLabel}>Selected</Text>
-              <View style={styles.grid}>
-                {brandAffinity.map((brand) => (
-                  <Pressable key={`sel-${brand}`} style={[styles.pill, styles.pillSelected]} onPress={() => toggleBrand(brand)}>
-                    <Text style={[styles.pillText, styles.pillTextSelected]}>{brand}  ×</Text>
-                  </Pressable>
-                ))}
-              </View>
-            </View>
-          )}
-
-          <View style={styles.suggestionSection}>
-            <Text style={styles.sectionLabel}>{searchQuery ? 'Results' : 'Suggestions'}</Text>
-            <View style={styles.grid}>
-              {filteredBrands.filter(b => !brandAffinity.includes(b)).map((brand) => (
-                <Pressable key={`sug-${brand}`} style={styles.pill} onPress={() => toggleBrand(brand)}>
-                  <Text style={styles.pillText}>+  {brand}</Text>
-                </Pressable>
-              ))}
-              {filteredBrands.length === 0 && (
-                <Text style={styles.emptyText}>No brands found matching "{searchQuery}"</Text>
-              )}
-            </View>
-          </View>
-        </ScrollView>
-
-        <View style={styles.footer}>
-          <AnimatedButton
-            title="Continue →"
-            onPress={handleContinue}
-            disabled={!isComplete}
-            variant={isComplete ? 'primary' : 'secondary'}
+        <View style={styles.searchWrapper}>
+          <TextInput
+            style={styles.search}
+            placeholder="Search brands..."
+            placeholderTextColor={colors.text.tertiary}
+            value={query}
+            onChangeText={(t) => {
+              setRequested(false);
+              setQuery(t);
+            }}
+            autoCorrect={false}
+            autoCapitalize="none"
           />
-          <Pressable onPress={() => router.push('/(calibration)/current-wardrobe')}>
-            <Text style={styles.skipText}>Skip</Text>
-          </Pressable>
         </View>
-      </KeyboardAvoidingView>
+
+        {loading ? (
+          <View style={styles.pillsRow}>
+            {Array.from({ length: 8 }).map((_, i) => (
+              <View key={i} style={styles.skeleton} />
+            ))}
+          </View>
+        ) : (
+          <View style={styles.pillsRow}>
+            {brands.map((brand) => {
+              const isSelected = selected.includes(brand.name);
+              return (
+                <Pressable
+                  key={brand.id}
+                  onPress={() => toggle(brand.name)}
+                  style={[styles.pill, isSelected && styles.pillSelected]}
+                >
+                  <Text style={[styles.pillText, isSelected && styles.pillTextSelected]}>
+                    {brand.name}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        )}
+
+        {showNotFound && (
+          <View style={styles.notFound}>
+            <Text style={styles.notFoundTitle}>"{query}" isn't in our list yet.</Text>
+            <Text style={styles.notFoundSubtext}>Want us to add them?</Text>
+
+            {!requested ? (
+              <Pressable
+                style={styles.requestBtn}
+                onPress={handleRequest}
+                disabled={requesting || !userId}
+              >
+                <Text style={styles.requestBtnText}>
+                  {requesting ? 'Requesting...' : `Request ${query}`.toUpperCase()}
+                </Text>
+              </Pressable>
+            ) : (
+              <Text style={styles.requestedText}>✓  Request sent. We'll add them soon.</Text>
+            )}
+          </View>
+        )}
+      </ScrollView>
+
+      <View style={styles.footer}>
+        <AnimatedButton title="Continue →" onPress={handleContinue} variant="primary" />
+        <Pressable onPress={() => router.push('/(calibration)/visual-vibe')}>
+          <Text style={styles.skip}>Skip — I'll discover as I go</Text>
+        </Pressable>
+      </View>
     </View>
   );
 }
@@ -109,99 +159,119 @@ export default function BrandAffinityScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0a0a0a',
-  },
-  innerContainer: {
-    flex: 1,
+    backgroundColor: colors.bg.primary,
   },
   content: {
-    paddingHorizontal: 28,
-    paddingTop: 20,
-    paddingBottom: 40,
+    paddingHorizontal: space[7],
+    paddingTop: space[6],
+    paddingBottom: 140,
   },
-  title: {
-    fontFamily: 'Syne_700Bold',
-    fontSize: 36,
-    color: '#fff',
-    lineHeight: 42,
-    letterSpacing: -1,
-    marginBottom: 12,
+  question: {
+    fontFamily: fonts.display,
+    fontSize: size.xxxl,
+    color: colors.text.primary,
+    letterSpacing: tracking.tight,
+    lineHeight: 48,
   },
-  subtitle: {
-    fontFamily: 'Inter_400Regular',
-    fontSize: 16,
-    color: 'rgba(255,255,255,0.6)',
-    marginBottom: 32,
+  subtext: {
+    fontFamily: fonts.body,
+    fontSize: size.base,
+    color: colors.text.tertiary,
+    marginTop: space[2],
+    marginBottom: space[5],
   },
-  searchContainer: {
-    marginBottom: 32,
+  searchWrapper: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border.default,
+    marginBottom: space[5],
   },
-  searchInput: {
-    backgroundColor: 'rgba(255,255,255,0.05)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.2)',
-    borderRadius: 16,
-    paddingHorizontal: 20,
-    paddingVertical: 18,
-    fontFamily: 'Inter_500Medium',
-    fontSize: 16,
-    color: '#fff',
+  search: {
+    paddingVertical: 12,
+    fontFamily: fonts.body,
+    fontSize: size.base,
+    color: colors.text.primary,
+    backgroundColor: 'transparent',
+    borderWidth: 0,
   },
-  sectionLabel: {
-    fontFamily: 'Syne_600SemiBold',
-    fontSize: 12,
-    color: 'rgba(255,255,255,0.4)',
-    letterSpacing: 2,
-    textTransform: 'uppercase',
-    marginBottom: 16,
-  },
-  selectedSection: {
-    marginBottom: 32,
-  },
-  suggestionSection: {
-    marginBottom: 32,
-  },
-  grid: {
+  pillsRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 10,
+    gap: space[3],
+  },
+  skeleton: {
+    width: 90,
+    height: 44,
+    backgroundColor: colors.bg.elevated,
+    opacity: 0.3,
   },
   pill: {
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.15)',
-    borderRadius: 30,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border.default,
+    paddingVertical: 14,
+    paddingHorizontal: space[5],
   },
   pillSelected: {
-    backgroundColor: '#fff',
-    borderColor: '#fff',
+    borderColor: colors.text.primary,
   },
   pillText: {
-    fontFamily: 'Inter_500Medium',
-    fontSize: 14,
-    color: 'rgba(255,255,255,0.8)',
+    fontFamily: fonts.bodyMedium,
+    fontSize: size.base,
+    color: colors.text.tertiary,
   },
   pillTextSelected: {
-    color: '#000',
+    color: colors.text.primary,
   },
-  emptyText: {
-    fontFamily: 'Inter_400Regular',
-    color: 'rgba(255,255,255,0.4)',
-    fontSize: 14,
-    marginTop: 8,
+  notFound: {
+    marginTop: space[6],
+    padding: space[5],
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border.subtle,
   },
-  footer: {
-    paddingHorizontal: 28,
-    paddingBottom: 52,
-    paddingTop: 16,
-    gap: 16,
+  notFoundTitle: {
+    fontFamily: fonts.displayMedium,
+    fontSize: size.base,
+    color: colors.text.secondary,
+  },
+  notFoundSubtext: {
+    fontFamily: fonts.body,
+    fontSize: size.sm,
+    color: colors.text.tertiary,
+    marginTop: space[2],
+  },
+  requestBtn: {
+    marginTop: space[4],
+    paddingVertical: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border.strong,
     alignItems: 'center',
   },
-  skipText: {
-    fontFamily: 'Inter_500Medium',
-    color: 'rgba(255,255,255,0.5)',
-    fontSize: 13,
+  requestBtnText: {
+    fontFamily: fonts.displayMedium,
+    fontSize: size.xs,
+    color: colors.text.primary,
+    letterSpacing: tracking.widest,
+  },
+  requestedText: {
+    fontFamily: fonts.body,
+    fontSize: size.sm,
+    color: colors.text.secondary,
+    marginTop: space[4],
+  },
+  footer: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    paddingHorizontal: space[7],
+    paddingBottom: 52,
+    paddingTop: space[4],
+    gap: space[4],
+    alignItems: 'center',
+    backgroundColor: colors.bg.primary,
+  },
+  skip: {
+    fontFamily: fonts.body,
+    fontSize: size.sm,
+    color: colors.text.tertiary,
   },
 });
