@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -6,31 +6,41 @@ import {
   TouchableOpacity,
   Platform,
 } from 'react-native';
-import { router } from 'expo-router';
 import { GradientBackground } from '../../components/GradientBackground';
-import { signInWithGoogle, getCurrentUser } from '../../lib/auth';
-import { getUserProfile } from '../../lib/users';
+import { signInWithGoogle } from '../../lib/auth';
 import { fonts, size } from '../../lib/tokens';
 
 export default function AuthScreen() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  useEffect(() => {
+    return () => { setLoading(false); };
+  }, []);
+
   const handleGoogleAuth = async () => {
-    setLoading(true);
     setError(null);
-    const { error } = await signInWithGoogle();
-    if (error) {
+    setLoading(true);
+    try {
+      const { error } = await signInWithGoogle();
+      // If we get here and component is still mounted,
+      // routing hasn't happened yet — show error if any
+      if (error) {
+        if (error.message === 'Sign in cancelled') {
+          // User dismissed the browser — not an error, just reset
+          setLoading(false);
+          return;
+        }
+        console.error('[AuthScreen] Sign in error:', error.message);
+        setError('Sign in failed. Please try again.');
+        setLoading(false);
+      }
+      // If no error: _layout.tsx onAuthStateChange will handle routing
+      // Don't call setLoading(false) on success — screen will unmount
+    } catch (e: any) {
+      setError('Something went wrong. Please try again.');
       setLoading(false);
-      setError(error?.message ?? 'Sign in failed. Try again.');
-      return;
     }
-    const user = await getCurrentUser();
-    if (user) {
-      const { data: profile } = await getUserProfile(user.id);
-      router.replace(profile?.calibration_completed ? '/feed' : '/(calibration)/style-preference');
-    }
-    setLoading(false);
   };
 
 

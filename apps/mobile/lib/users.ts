@@ -69,16 +69,26 @@ export async function incrementSignalCount(userId: string): Promise<void> {
   await supabase.rpc('increment_signal_count', { user_id: userId });
 }
 
-/*
-Run in Supabase SQL Editor:
+// ─── Delete Account ───────────────────────────────────────────────────────────
 
-create or replace function increment_signal_count(user_id uuid)
-returns void language plpgsql security definer as $$
-begin
-  update users
-  set total_signals = total_signals + 1,
-      last_active = now()
-  where id = user_id;
-end;
-$$;
-*/
+export async function updateNametag(
+  userId: string,
+  name: string,
+  tag: string
+): Promise<{ error: any }> {
+  const { error } = await supabase
+    .from('users')
+    .update({
+      display_name: name,
+      user_tag: tag,
+      onboarding_completed: true
+    })
+    .eq('id', userId);
+
+  return { error };
+}
+
+export async function deleteAccount(userId: string): Promise<{ error: any }> {
+  const { error } = await supabase.rpc('delete_user');
+  return { error };
+}

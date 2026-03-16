@@ -1,11 +1,12 @@
+import { useEffect } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ImageBackground,
+  Pressable,
 } from 'react-native';
 import { router } from 'expo-router';
-import { useEffect } from 'react';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -14,29 +15,22 @@ import Animated, {
   Easing,
 } from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
-import { supabase } from '../lib/supabase';
-import { getUserProfile } from '../lib/users';
 import { AnimatedButton } from '../components/AnimatedButton';
+import { useAuthStore } from '../store/authStore';
 
 const ease = Easing.bezier(0.25, 0.1, 0.25, 1);
 
 export default function SplashScreen() {
+  const isAuthReady = useAuthStore((s) => s.isAuthReady);
   const titleOpacity = useSharedValue(0);
   const titleY = useSharedValue(24);
   const subtitleOpacity = useSharedValue(0);
   const buttonOpacity = useSharedValue(0);
   const footerOpacity = useSharedValue(0);
 
+  // Only animate in after the layout has confirmed there is no active session.
   useEffect(() => {
-    // Check if the user is already authenticated
-    (async () => {
-      const { data } = await supabase.auth.getSession();
-      if (data.session?.user) {
-        const { data: profile } = await getUserProfile(data.session.user.id);
-        router.replace(profile?.calibration_completed ? '/feed' : '/(calibration)/style-preference');
-      }
-    })();
-
+    if (!isAuthReady) return;
     titleOpacity.value = withTiming(1, { duration: 800, easing: ease });
     titleY.value = withTiming(0, { duration: 800, easing: ease });
     
@@ -54,8 +48,9 @@ export default function SplashScreen() {
       800,
       withTiming(1, { duration: 800, easing: ease })
     );
-  }, []);
+  }, [isAuthReady]);
 
+  // ALL hooks must be declared before any conditional returns (Rules of Hooks)
   const titleStyle = useAnimatedStyle(() => ({
     opacity: titleOpacity.value,
     transform: [{ translateY: titleY.value }],
@@ -72,6 +67,9 @@ export default function SplashScreen() {
   const footerStyle = useAnimatedStyle(() => ({
     opacity: footerOpacity.value,
   }));
+
+  // Show nothing while we wait for the auth check
+  if (!isAuthReady) return null;
 
   return (
     <View style={styles.container}>
@@ -109,6 +107,24 @@ export default function SplashScreen() {
           <Animated.Text style={[styles.footerText, footerStyle]}>
             No shopping clutter. Just signal, style, and future drops.
           </Animated.Text>
+
+          {/* TODO: Remove before production */}
+          {__DEV__ && (
+            <View style={styles.devSection}>
+              <Pressable
+                onPress={() => router.replace('/feed')}
+                style={styles.devButton}
+              >
+                <Text style={styles.devButtonText}>⚡ DEV → Feed</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => router.replace('/(calibration)/style-preference')}
+                style={styles.devButton}
+              >
+                <Text style={styles.devButtonText}>⚡ DEV → Onboarding</Text>
+              </Pressable>
+            </View>
+          )}
         </View>
       </ImageBackground>
     </View>
@@ -167,5 +183,23 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: 'rgba(255,255,255,0.4)',
     textAlign: 'center',
+  },
+  devSection: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 8,
+  },
+  devButton: {
+    flex: 1,
+    paddingVertical: 10,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: '#333',
+    alignItems: 'center',
+  },
+  devButtonText: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 11,
+    color: '#444',
+    letterSpacing: 1,
   },
 });

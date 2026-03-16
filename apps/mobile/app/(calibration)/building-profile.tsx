@@ -12,6 +12,8 @@ import Animated, {
 } from 'react-native-reanimated';
 import { GradientBackground } from '../../components/GradientBackground';
 import { colors, fonts, size, space } from '../../lib/tokens';
+import { useAuthStore } from '../../store/authStore';
+import { useCalibrationStore } from '../../store/calibrationStore';
 
 const PHRASES = [
   'Analyzing style preferences...',
@@ -44,11 +46,37 @@ export default function BuildingProfileScreen() {
       });
     }, 1200);
 
-    const timer = setTimeout(() => router.replace('/tuned-in'), 6000);
+    const syncProfile = async () => {
+      try {
+        const { getCompleteProfile } = useCalibrationStore.getState();
+        const { userId, updateProfile } = useAuthStore.getState();
+        const profile = getCompleteProfile();
+
+        if (userId) {
+          await updateProfile({
+            aesthetic_vibe: profile.style_aspiration,
+            fashion_preferences: {
+              energies: profile.preferred_styles,
+              brand_affinity: profile.brand_affinity,
+              aesthetic_vibe: profile.style_aspiration,
+            },
+            calibration_completed: true,
+            onboarding_completed: true,
+          });
+        }
+
+        await new Promise(r => setTimeout(r, 6000));
+        router.replace('/tuned-in');
+      } catch (err) {
+        console.error('Error saving profile', err);
+        router.replace('/tuned-in');
+      }
+    };
+
+    syncProfile();
 
     return () => {
       clearInterval(interval);
-      clearTimeout(timer);
     };
   }, []);
 
