@@ -1,48 +1,78 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { 
   View, 
   Text, 
-  StyleSheet, 
   TextInput, 
   TouchableOpacity, 
+  StyleSheet, 
   KeyboardAvoidingView, 
   Platform,
   ActivityIndicator,
-  Alert
 } from 'react-native';
 import { router } from 'expo-router';
 import Animated, { 
   FadeInDown, 
-  FadeInUp 
+  FadeIn,
+  useSharedValue,
+  useAnimatedStyle,
+  withSequence,
+  withTiming,
+  withRepeat,
 } from 'react-native-reanimated';
-import { colors, fonts, size, space, tracking, radius } from '../lib/tokens';
+import { colors, fonts, size, space, tracking } from '../lib/tokens';
 import { useAuthStore } from '../store/authStore';
 import { updateNametag } from '../lib/users';
+import { useHaptics } from '../lib/useHaptics';
 
 export default function NametagScreen() {
   const { userId, fetchProfile } = useAuthStore();
+  const haptics = useHaptics();
   const [preferredName, setPreferredName] = useState('');
-  const [userTag, setUserTag] = useState('');
+  const [tagHandle, setTagHandle] = useState('');
+  const [tagNumber, setTagNumber] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const validateTag = (tag: string) => {
-    // Format requirement: at least 3 alphabets + @ + 4 digits
-    // Example: ABC@1234
-    const regex = /^[A-Z]{3,}@[0-9]{4}$/;
-    return regex.test(tag.toUpperCase());
+  const errorShake = useSharedValue(0);
+  const numberInputRef = useRef<TextInput>(null);
+
+  const triggerError = (msg: string) => {
+    haptics.error();
+    setError(msg);
+    errorShake.value = withSequence(
+      withTiming(-10, { duration: 50 }),
+      withRepeat(withTiming(10, { duration: 100 }), 3, true),
+      withTiming(0, { duration: 50 })
+    );
   };
 
+  const errorStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: errorShake.value }],
+  }));
+
   const handleSubmit = async () => {
+    haptics.light();
     if (!preferredName.trim()) {
-      setError('Preferred name is required');
+      triggerError('Nickname is required');
       return;
     }
 
-    if (!validateTag(userTag)) {
-      setError('Format: 3+ letters @ 4 digits (e.g. YUV@7777)');
+    if (preferredName.length > 13) {
+      triggerError('Nickname max 13 characters');
       return;
     }
+
+    if (tagHandle.length < 3 || tagHandle.length > 9) {
+      triggerError('Handle must be 3-9 characters');
+      return;
+    }
+
+    if (tagNumber.length !== 4 || !/^\d+$/.test(tagNumber)) {
+      triggerError('Tag number must be 4 digits');
+      return;
+    }
+
+    const fullTag = `${tagHandle.toUpperCase()}@${tagNumber}`;
 
     setError(null);
     setLoading(true);
@@ -51,24 +81,24 @@ export default function NametagScreen() {
       const { error: updateError } = await updateNametag(
         userId!, 
         preferredName.trim(), 
-        userTag.toUpperCase().trim()
+        fullTag
       );
 
       if (updateError) {
         if (updateError.code === '23505') {
-          setError('This tag is already claimed by another user.');
+          triggerError('This identity is already claimed.');
         } else {
-          setError('Could not save identity. Please try again.');
+          triggerError('Identity sync failed.');
         }
         setLoading(false);
         return;
       }
 
       await fetchProfile(userId!);
-      router.replace('/feed');
+      router.replace('/identity-secured');
     } catch (e) {
       console.error('[Nametag] Submit error:', e);
-      setError('An unexpected error occurred.');
+      triggerError('An unexpected error occurred.');
       setLoading(false);
     }
   };
@@ -80,52 +110,76 @@ export default function NametagScreen() {
     >
       <View style={styles.inner}>
         <Animated.View entering={FadeInDown.delay(200).duration(800)}>
-          <Text style={styles.title}>YOUR IDENTITY</Text>
-          <Text style={styles.subtitle}>
-            Create your nametag. This is how brands and other discoverers will identify your influence.
-          </Text>
+          <Text style={styles.title}>IDENTITY</Text>
+          <Text style={styles.subtitle}>Let's setup your vibeID!</Text>
         </Animated.View>
 
         <Animated.View entering={FadeInDown.delay(400).duration(800)} style={styles.form}>
           <View style={styles.inputGroup}>
-            <Text style={styles.label}>PREFERRED NAME</Text>
+            <Text style={styles.label}>NICKNAME</Text>
             <TextInput
               style={styles.input}
-              placeholder="e.g. Yuvam"
+              placeholder="nickname"
               placeholderTextColor={colors.text.tertiary}
               value={preferredName}
               onChangeText={setPreferredName}
               autoFocus
+              maxLength={13}
             />
           </View>
 
           <View style={styles.inputGroup}>
             <Text style={styles.label}>VIBE TAG</Text>
-            <TextInput
-              style={[styles.input, styles.tagInput]}
-              placeholder="YUV@8888"
-              placeholderTextColor={colors.text.tertiary}
-              value={userTag}
-              onChangeText={(text) => setUserTag(text.toUpperCase())}
-              autoCapitalize="characters"
-              autoCorrect={false}
-            />
-            <Text style={styles.hint}>At least 3 letters + @ + 4 digits</Text>
+            <View style={styles.splitInputContainer}>
+              <TextInput
+                style={[styles.input, styles.handleInput]}
+                placeholder="abc"
+                placeholderTextColor={colors.text.tertiary}
+                value={tagHandle}
+                onChangeText={(text) => {
+                  const cleaned = text.replace(/[^a-zA-Z]/g, '').toUpperCase();
+                  setTagHandle(cleaned);
+                  if (cleaned.length >= 9) {
+                    haptics.selection();
+                    numberInputRef.current?.focus();
+                  }
+                }}
+                autoCapitalize="characters"
+                autoCorrect={false}
+                maxLength={9 as number}
+              />
+              <Text style={styles.atSymbol}>@</Text>
+              <TextInput
+                ref={numberInputRef}
+                style={[styles.input, styles.numberInput]}
+                placeholder="0000"
+                placeholderTextColor={colors.text.tertiary}
+                value={tagNumber}
+                onChangeText={(text) => {
+                  const cleaned = text.replace(/[^0-9]/g, '');
+                  setTagNumber(cleaned);
+                }}
+                keyboardType="number-pad"
+                maxLength={4 as number}
+              />
+            </View>
           </View>
 
           {error && (
-            <Text style={styles.errorText}>{error}</Text>
+            <Animated.View style={[styles.errorBox, errorStyle]} entering={FadeIn}>
+              <Text style={styles.errorText}>{error}</Text>
+            </Animated.View>
           )}
 
           <TouchableOpacity 
-            style={[styles.button, (!preferredName || !userTag) && styles.buttonDisabled]}
+            style={[styles.button, (!preferredName || !tagHandle || tagNumber.length < 4) && styles.buttonDisabled]}
             onPress={handleSubmit}
             disabled={loading}
           >
             {loading ? (
               <ActivityIndicator color={colors.text.primary} />
             ) : (
-              <Text style={styles.buttonText}>ESTABLISH IDENTITY</Text>
+              <Text style={styles.buttonText}>SECURE IDENTITY</Text>
             )}
           </TouchableOpacity>
         </Animated.View>
@@ -141,75 +195,93 @@ const styles = StyleSheet.create({
   },
   inner: {
     flex: 1,
-    justifyContent: 'center',
     paddingHorizontal: space[8],
+    justifyContent: 'center',
+    paddingBottom: space[16],
   },
   title: {
     fontFamily: fonts.display,
-    fontSize: size.xxl,
+    fontSize: size.xl * 1.5,
     color: colors.text.primary,
     letterSpacing: tracking.widest,
     marginBottom: space[2],
   },
   subtitle: {
     fontFamily: fonts.body,
-    fontSize: size.sm,
+    fontSize: size.md,
     color: colors.text.secondary,
-    lineHeight: size.sm * 1.5,
+    letterSpacing: tracking.wide,
     marginBottom: space[10],
   },
   form: {
-    width: '100%',
+    gap: space[8],
   },
   inputGroup: {
-    marginBottom: space[6],
+    gap: space[2],
   },
   label: {
-    fontFamily: fonts.body,
+    fontFamily: fonts.display,
     fontSize: size.xs,
     color: colors.text.tertiary,
-    letterSpacing: tracking.wider,
-    marginBottom: space[2],
+    letterSpacing: tracking.widest,
+    marginLeft: space[1],
   },
   input: {
-    backgroundColor: colors.bg.elevated,
-    borderWidth: 1,
-    borderColor: colors.border.subtle,
-    borderRadius: radius.md,
-    padding: space[4],
+    height: 60,
+    backgroundColor: '#111',
+    borderRadius: 0,
+    paddingHorizontal: space[5],
     color: colors.text.primary,
-    fontFamily: fonts.body,
-    fontSize: size.md,
-  },
-  tagInput: {
-    letterSpacing: tracking.widest,
     fontFamily: fonts.display,
+    fontSize: size.md,
+    letterSpacing: tracking.wider,
+    borderBottomWidth: 1,
+    borderBottomColor: '#222',
   },
-  hint: {
-    fontSize: size.xs,
-    color: colors.text.tertiary,
-    marginTop: space[1],
-    fontStyle: 'italic',
+  splitInputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space[2],
+  },
+  handleInput: {
+    flex: 2,
+  },
+  atSymbol: {
+    fontFamily: fonts.display,
+    fontSize: size.lg,
+    color: colors.text.secondary,
+  },
+  numberInput: {
+    flex: 1,
+    textAlign: 'center',
+  },
+  errorBox: {
+    marginTop: space[2],
+    paddingVertical: space[2],
+    paddingHorizontal: space[4],
+    backgroundColor: 'rgba(255, 69, 58, 0.1)',
+    borderLeftWidth: 2,
+    borderLeftColor: '#FF453A',
   },
   errorText: {
-    color: '#ff4444',
-    fontSize: size.xs,
-    marginBottom: space[4],
+    color: '#FF453A',
     fontFamily: fonts.body,
+    fontSize: size.xs,
+    letterSpacing: tracking.wide,
   },
   button: {
+    height: 60,
     backgroundColor: colors.text.primary,
-    paddingVertical: space[4],
-    borderRadius: radius.full,
+    justifyContent: 'center',
     alignItems: 'center',
     marginTop: space[4],
   },
   buttonDisabled: {
-    opacity: 0.5,
+    opacity: 0.3,
   },
   buttonText: {
-    fontFamily: fonts.display,
     color: colors.bg.primary,
+    fontFamily: fonts.display,
     fontSize: size.sm,
     letterSpacing: tracking.widest,
   },

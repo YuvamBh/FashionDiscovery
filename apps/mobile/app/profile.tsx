@@ -19,10 +19,13 @@ import { deleteAccount } from '../lib/users';
 import { getUserSignalCount } from '../lib/signals';
 import { useFeedStore } from '../store/feedStore';
 import { TabBar } from '../components/TabBar';
+import { AnimatedButton } from '../components/AnimatedButton';
+import { useHaptics } from '../lib/useHaptics';
 
 export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
-  const { profile, fetchProfile, userId, clearAuth } = useAuthStore();
+  const { profile, fetchProfile, userId, clearAuth, signOutUser } = useAuthStore();
+  const haptics = useHaptics();
   const savedCount = useFeedStore((s) => s.savedItems.length);
   const [signalCount, setSignalCount] = useState<number | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -46,38 +49,42 @@ export default function ProfileScreen() {
   }));
 
   const handleSignOut = async () => {
-    await supabase.auth.signOut(); // triggers SIGNED_OUT → _layout routes to /
+    haptics.light();
+    await signOutUser();
+    // _layout.tsx onAuthStateChange also handles this, but store method is more robust
+    router.replace('/');
   };
 
   const handleDeleteAccount = () => {
+    haptics.warning();
     Alert.alert(
       'Delete Account',
       'This will permanently delete your account and all your data — signals, taste profile, everything. This cannot be undone.',
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: 'Cancel', style: 'cancel', onPress: () => haptics.selection() },
         {
           text: 'Delete',
           style: 'destructive',
           onPress: async () => {
             if (!userId) return;
             setIsDeleting(true);
+            haptics.heavy();
             
             const { error } = await deleteAccount(userId);
             
             if (error) {
               console.error('[Profile] Delete error:', error);
+              haptics.error();
               Alert.alert(
                 'Deletion Failed',
-                'Make sure you have run the delete_user SQL function in your Supabase Editor. Without it, the app doesn\'t have permission to remove your account.'
+                'Make sure you have run the delete_user SQL function in your Supabase Editor.'
               );
               setIsDeleting(false);
               return;
             }
 
-            // Real account is gone from Supabase Auth + Public. Users rows cascade deleted.
-            // Now clear local session and kick to splash.
-            await supabase.auth.signOut();
-            clearAuth();
+            haptics.success();
+            await signOutUser();
             router.replace('/');
           },
         },
@@ -197,11 +204,13 @@ export default function ProfileScreen() {
           </Text>
         </View>
 
-        {/* SIGN OUT */}
+        {/* ACTIONS */}
         <View style={styles.actionSection}>
-          <Pressable style={styles.signOutButton} onPress={handleSignOut}>
-            <Text style={styles.signOutText}>Sign out</Text>
-          </Pressable>
+          <AnimatedButton
+            title="Sign out"
+            onPress={handleSignOut}
+            variant="secondary"
+          />
         </View>
 
         {/* DELETE ACCOUNT */}
@@ -223,18 +232,15 @@ export default function ProfileScreen() {
         {/* DEV TOOLS */}
         {__DEV__ && (
           <View style={styles.devSection}>
-            <Pressable
-              style={styles.devButton}
-              onPress={() => router.replace('/(calibration)/style-preference')}
-            >
-              <Text style={styles.devButtonText}>⚡ Reset calibration</Text>
-            </Pressable>
-            <Pressable
-              style={styles.devButton}
-              onPress={handleSignOut}
-            >
-              <Text style={styles.devButtonText}>⚡ Clear session</Text>
-            </Pressable>
+            <AnimatedButton
+              title="⚡ Reset calibration"
+              onPress={() => {
+                haptics.heavy();
+                router.replace('/(calibration)/style-preference');
+              }}
+              variant="secondary"
+              // style={{ flex: 1 }} // need to adjust if variant is used
+            />
           </View>
         )}
 

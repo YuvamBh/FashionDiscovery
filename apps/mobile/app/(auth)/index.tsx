@@ -6,13 +6,54 @@ import {
   TouchableOpacity,
   Platform,
 } from 'react-native';
+import { router } from 'expo-router';
 import { GradientBackground } from '../../components/GradientBackground';
 import { signInWithGoogle } from '../../lib/auth';
 import { fonts, size } from '../../lib/tokens';
+import { useAuthStore } from '../../store/authStore';
+import { useHaptics } from '../../lib/useHaptics';
+import { supabase } from '../../lib/supabase';
+import { AnimatedButton } from '../../components/AnimatedButton';
 
 export default function AuthScreen() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const authOutcome = useAuthStore((s) => s.authOutcome);
+  const haptics = useHaptics();
+
+  // Reactive redirect: when the layout resolves the auth outcome,
+  // this screen (which stays mounted during OAuth) immediately navigates.
+  useEffect(() => {
+    if (!authOutcome) return;
+    console.log(`[AuthScreen] Reactive redirect to: /${authOutcome}`);
+    setError(null); // Clear any transient errors on success
+    useAuthStore.setState({ authOutcome: null });
+    router.replace(`/${authOutcome}` as any);
+  }, [authOutcome]);
+
+  // Safety: If stuck in loading for > 12s, re-check session manually
+  // Only trigger if we haven't already received an authOutcome
+  useEffect(() => {
+    if (!loading || authOutcome) return;
+    const timer = setTimeout(async () => {
+      // Re-read store state in case it updated during the timeout
+      const currentOutcome = useAuthStore.getState().authOutcome;
+      if (currentOutcome) return;
+
+      console.log('[AuthScreen] Loading took > 12s. Re-checking session...');
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) {
+        const profile = await useAuthStore.getState().fetchProfile(session.user.id);
+        const outcome = profile?.onboarding_completed ? 'feed' : 'nametag';
+        useAuthStore.setState({ isAuthReady: true, authOutcome: outcome as any });
+      } else {
+        setLoading(false);
+        setError('Sign in timed out. Please try again.');
+        haptics.error();
+      }
+    }, 12000); // Increased to 12s for slower connections
+    return () => clearTimeout(timer);
+  }, [loading, authOutcome]);
 
   useEffect(() => {
     return () => { setLoading(false); };
@@ -21,25 +62,30 @@ export default function AuthScreen() {
   const handleGoogleAuth = async () => {
     setError(null);
     setLoading(true);
+    haptics.light(); // Tactile feedback on press
+    
     try {
+      console.log('[AuthScreen] Starting Google Auth...');
       const { error } = await signInWithGoogle();
-      // If we get here and component is still mounted,
-      // routing hasn't happened yet — show error if any
+      
       if (error) {
         if (error.message === 'Sign in cancelled') {
-          // User dismissed the browser — not an error, just reset
+          console.log('[AuthScreen] Sign in cancelled by user.');
           setLoading(false);
           return;
         }
         console.error('[AuthScreen] Sign in error:', error.message);
         setError('Sign in failed. Please try again.');
         setLoading(false);
+        haptics.error();
       }
-      // If no error: _layout.tsx onAuthStateChange will handle routing
-      // Don't call setLoading(false) on success — screen will unmount
+      // Success: Layout will set 'authOutcome', which our useEffect watches.
+      console.log('[AuthScreen] Google Auth call returned success. Waiting for session resolution...');
     } catch (e: any) {
+      console.error('[AuthScreen] Exception during auth:', e.message);
       setError('Something went wrong. Please try again.');
       setLoading(false);
+      haptics.error();
     }
   };
 
@@ -57,19 +103,17 @@ export default function AuthScreen() {
         </View>
 
         <View style={styles.actions}>
-          <TouchableOpacity
-            style={[styles.googleButton, loading && { opacity: 0.7 }]}
-            activeOpacity={0.8}
+          <AnimatedButton
+            title={loading ? 'Signing in...' : 'Continue with Google'}
             onPress={handleGoogleAuth}
             disabled={loading}
-          >
-            <View style={styles.googleIconPlaceholder}>
-              <Text style={styles.googleIconText}>G</Text>
-            </View>
-            <Text style={styles.googleButtonText}>
-              {loading ? 'Signing in...' : 'Continue with Google'}
-            </Text>
-          </TouchableOpacity>
+            variant="google"
+            icon={
+              <View style={styles.googleIconPlaceholder}>
+                <Text style={styles.googleIconText}>G</Text>
+              </View>
+            }
+          />
 
           {error && (
             <Text style={styles.errorText}>{error}</Text>

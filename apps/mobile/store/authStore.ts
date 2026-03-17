@@ -27,15 +27,20 @@ interface AuthState {
   isAuthenticated: boolean;
   /** True once the startup session check has resolved (with or without a session). */
   isAuthReady: boolean;
-  /** Route that AuthGate should redirect to. Cleared after navigation. */
-  pendingRoute: string | null;
+  /**
+   * Set by the auth listener once it has resolved the user's destination.
+   * - 'feed'    → user is authenticated and onboarding is done
+   * - 'nametag' → user is authenticated but needs onboarding
+   * - null      → no session / signed out, show sign-in UI
+   */
+  authOutcome: 'feed' | 'nametag' | null;
 
   setUserId: (id: string | null) => void;
   setProfile: (profile: UserProfile | null) => void;
   setLoading: (loading: boolean) => void;
   clearAuth: () => void;
 
-  fetchProfile: (userId: string) => Promise<UserProfile | null>;
+  fetchProfile: (userId: string, maxRetries?: number, delayMs?: number) => Promise<UserProfile | null>;
   updateProfile: (updates: Partial<UserProfile>) => Promise<void>;
   signOutUser: () => Promise<void>;
 }
@@ -46,7 +51,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   isLoading: false,
   isAuthenticated: false,
   isAuthReady: false,
-  pendingRoute: null,
+  authOutcome: null,
 
   setUserId: (id) => set({ userId: id, isAuthenticated: id !== null }),
   setProfile: (profile) => set({ profile }),
@@ -58,20 +63,34 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     isAuthenticated: false,
   }),
 
-  fetchProfile: async (userId) => {
-    const { data, error } = await supabase
-      .from('users')
-      .select('*')
-      .eq('id', userId)
-      .maybeSingle();
+  fetchProfile: async (userId, maxRetries = 3, delayMs = 500) => {
+    let attempt = 0;
+    
+    while (attempt < maxRetries) {
+      const { data, error } = await supabase
+        .from('users')
+        .select('*')
+        .eq('id', userId)
+        .maybeSingle();
 
-    if (error) {
-      console.warn('[AuthStore] fetchProfile error:', error.message);
-      return null;
+      if (error) {
+        console.warn(`[AuthStore] fetchProfile error (attempt ${attempt + 1}):`, error.message);
+      }
+
+      if (data) {
+        set({ profile: data as UserProfile });
+        return data as UserProfile;
+      }
+
+      console.log(`[AuthStore] Profile not found, retrying... (${attempt + 1}/${maxRetries})`);
+      attempt++;
+      if (attempt < maxRetries) {
+        await new Promise(resolve => setTimeout(resolve, delayMs));
+      }
     }
 
-    if (data) set({ profile: data as UserProfile });
-    return data as UserProfile | null;
+    console.warn('[AuthStore] fetchProfile failed after retries for user:', userId);
+    return null;
   },
 
   updateProfile: async (updates) => {
@@ -92,7 +111,17 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   signOutUser: async () => {
-    await supabase.auth.signOut();
-    get().clearAuth();
+    try {
+      await supabase.auth.signOut();
+    } catch (error) {
+      console.warn('[AuthStore] Error during signOut:', error);
+    }
+    set({
+      userId: null,
+      profile: null,
+      isAuthenticated: false,
+      isAuthReady: true, // Mark ready so the login screen can show
+      authOutcome: null,
+    });
   },
 }));

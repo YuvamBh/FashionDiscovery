@@ -21,34 +21,34 @@ import { useAuthStore } from '../store/authStore';
 const ease = Easing.bezier(0.25, 0.1, 0.25, 1);
 
 export default function SplashScreen() {
+  // Use separate selectors — inline object selectors create new refs each render,
+  // which causes an infinite loop with Zustand's useSyncExternalStore.
   const isAuthReady = useAuthStore((s) => s.isAuthReady);
+  const authOutcome = useAuthStore((s) => s.authOutcome);
   const titleOpacity = useSharedValue(0);
   const titleY = useSharedValue(24);
   const subtitleOpacity = useSharedValue(0);
   const buttonOpacity = useSharedValue(0);
   const footerOpacity = useSharedValue(0);
 
-  // Only animate in after the layout has confirmed there is no active session.
+  // Reactive redirect: layout resolves auth -> this screen executes navigation
   useEffect(() => {
-    if (!isAuthReady) return;
+    if (!authOutcome) return;
+    console.log(`[Index] Reactive redirect to: /${authOutcome}`);
+    // Reset outcome as we consume it
+    useAuthStore.setState({ authOutcome: null });
+    router.replace(`/${authOutcome}` as any);
+  }, [authOutcome]);
+
+  // Animate sign-in UI in only if there is no active session
+  useEffect(() => {
+    if (!isAuthReady || authOutcome) return;
     titleOpacity.value = withTiming(1, { duration: 800, easing: ease });
     titleY.value = withTiming(0, { duration: 800, easing: ease });
-    
-    subtitleOpacity.value = withDelay(
-      300, 
-      withTiming(1, { duration: 800, easing: ease })
-    );
-    
-    buttonOpacity.value = withDelay(
-      600,
-      withTiming(1, { duration: 800, easing: ease })
-    );
-
-    footerOpacity.value = withDelay(
-      800,
-      withTiming(1, { duration: 800, easing: ease })
-    );
-  }, [isAuthReady]);
+    subtitleOpacity.value = withDelay(300, withTiming(1, { duration: 800, easing: ease }));
+    buttonOpacity.value = withDelay(600, withTiming(1, { duration: 800, easing: ease }));
+    footerOpacity.value = withDelay(800, withTiming(1, { duration: 800, easing: ease }));
+  }, [isAuthReady, authOutcome]);
 
   // ALL hooks must be declared before any conditional returns (Rules of Hooks)
   const titleStyle = useAnimatedStyle(() => ({
@@ -68,8 +68,8 @@ export default function SplashScreen() {
     opacity: footerOpacity.value,
   }));
 
-  // Show nothing while we wait for the auth check
-  if (!isAuthReady) return null;
+  // Show nothing while we wait for the auth check or while redirecting
+  if (!isAuthReady || authOutcome) return null;
 
   return (
     <View style={styles.container}>

@@ -14,6 +14,7 @@ import { GradientBackground } from '../../components/GradientBackground';
 import { colors, fonts, size, space } from '../../lib/tokens';
 import { useAuthStore } from '../../store/authStore';
 import { useCalibrationStore } from '../../store/calibrationStore';
+import { useHaptics } from '../../lib/useHaptics';
 
 const PHRASES = [
   'Analyzing style preferences...',
@@ -28,6 +29,7 @@ export default function BuildingProfileScreen() {
   const [phraseIndex, setPhraseIndex] = useState(0);
   const opacity = useSharedValue(1);
   const scale = useSharedValue(1);
+  const haptics = useHaptics();
 
   useEffect(() => {
     scale.value = withRepeat(
@@ -41,7 +43,11 @@ export default function BuildingProfileScreen() {
 
     const interval = setInterval(() => {
       opacity.value = withTiming(0, { duration: 300 }, () => {
-        runOnJS(setPhraseIndex)((prev) => (prev >= PHRASES.length - 1 ? prev : prev + 1));
+        runOnJS(setPhraseIndex)((prev) => {
+          const next = prev >= PHRASES.length - 1 ? prev : prev + 1;
+          if (next !== prev) runOnJS(haptics.light)();
+          return next;
+        });
         opacity.value = withTiming(1, { duration: 300 });
       });
     }, 1200);
@@ -66,6 +72,7 @@ export default function BuildingProfileScreen() {
         }
 
         await new Promise(r => setTimeout(r, 6000));
+        haptics.success();
         router.replace('/tuned-in');
       } catch (err) {
         console.error('Error saving profile', err);

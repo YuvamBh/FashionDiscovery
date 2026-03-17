@@ -2,6 +2,8 @@ import React from 'react';
 import { Text, Pressable, StyleSheet, ViewStyle, TextStyle } from 'react-native';
 import { MotiView } from 'moti';
 
+import { useHaptics } from '../lib/useHaptics';
+
 interface AnimatedButtonProps {
   onPress: () => void;
   title: string;
@@ -21,10 +23,12 @@ export const AnimatedButton: React.FC<AnimatedButtonProps> = ({
   icon,
   disabled = false,
 }) => {
+  const haptics = useHaptics();
+
   const getBackgroundColor = () => {
     switch (variant) {
       case 'primary': return '#ffffff';
-      case 'secondary': return 'rgba(255,255,255,0.1)';
+      case 'secondary': return 'transparent'; // Reverted to transparent with border
       case 'outline': return 'transparent';
       case 'google': return '#ffffff';
       default: return '#ffffff';
@@ -34,11 +38,16 @@ export const AnimatedButton: React.FC<AnimatedButtonProps> = ({
   const getTextColor = () => {
     switch (variant) {
       case 'primary': return '#000000';
-      case 'secondary': return '#ffffff';
+      case 'secondary': return 'rgba(255,255,255,0.7)'; // Reverted to tertiary/dimmed
       case 'outline': return '#ffffff';
       case 'google': return '#000000';
       default: return '#000000';
     }
+  };
+
+  const handlePress = () => {
+    haptics.light();
+    onPress();
   };
 
   return (
@@ -47,16 +56,19 @@ export const AnimatedButton: React.FC<AnimatedButtonProps> = ({
       style={[styles.container, style]}
     >
       <Pressable
-        onPress={onPress}
+        onPress={handlePress}
         disabled={disabled}
         style={({ pressed }) => [
           styles.button,
           {
             backgroundColor: getBackgroundColor(),
-            borderColor: variant === 'outline' ? 'rgba(255,255,255,0.3)' : 'transparent',
-            borderWidth: variant === 'outline' ? 1 : 0,
+            borderColor: variant === 'secondary' || variant === 'outline' 
+              ? 'rgba(255,255,255,0.1)' 
+              : 'transparent',
+            borderWidth: variant === 'secondary' || variant === 'outline' ? 1 : 0,
+            paddingVertical: variant === 'google' || variant === 'primary' ? 18 : 16,
             opacity: disabled ? 0.5 : pressed ? 0.9 : 1,
-            transform: [{ scale: pressed ? 0.97 : 1 }],
+            transform: [{ scale: pressed ? 0.98 : 1 }],
           },
         ]}
       >
@@ -64,7 +76,11 @@ export const AnimatedButton: React.FC<AnimatedButtonProps> = ({
         <Text
           style={[
             styles.text,
-            { color: getTextColor() },
+            { 
+              color: getTextColor(),
+              fontFamily: variant === 'google' ? 'Inter_600SemiBold' : 'Syne_600SemiBold',
+              fontSize: variant === 'google' ? 15 : 16,
+            },
             textStyle,
           ]}
         >
@@ -78,23 +94,20 @@ export const AnimatedButton: React.FC<AnimatedButtonProps> = ({
 const styles = StyleSheet.create({
   container: {
     width: '100%',
-    marginVertical: 8,
+    marginVertical: 4,
   },
   button: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 16,
     paddingHorizontal: 24,
     borderRadius: 30,
     width: '100%',
   },
   iconContainer: {
-    marginRight: 10,
+    marginRight: 12,
   },
   text: {
-    fontFamily: 'Syne_600SemiBold',
-    fontSize: 16,
     letterSpacing: 0.5,
   },
 });
