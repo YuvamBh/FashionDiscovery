@@ -6,6 +6,7 @@ import {
   ImageBackground,
   Pressable,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import Animated, {
   useSharedValue,
@@ -21,6 +22,7 @@ import { useAuthStore } from '../store/authStore';
 const ease = Easing.bezier(0.25, 0.1, 0.25, 1);
 
 export default function SplashScreen() {
+  const insets = useSafeAreaInsets();
   // Use separate selectors — inline object selectors create new refs each render,
   // which causes an infinite loop with Zustand's useSyncExternalStore.
   const isAuthReady = useAuthStore((s) => s.isAuthReady);
@@ -82,7 +84,7 @@ export default function SplashScreen() {
           style={styles.gradient}
         />
         
-        <View style={styles.content}>
+        <View style={[styles.content, { paddingTop: insets.top + 20 }]}>
           <Animated.View style={titleStyle}>
             <Text style={styles.wordmark}>FashionDiscovery</Text>
             <Text style={styles.headline}>
@@ -95,7 +97,7 @@ export default function SplashScreen() {
           </Animated.Text>
         </View>
 
-        <View style={styles.bottomSection}>
+        <View style={[styles.bottomSection, { paddingBottom: Math.max(insets.bottom, 60) }]}>
           <Animated.View style={buttonStyle}>
             <AnimatedButton 
               title="Get started" 
@@ -108,23 +110,6 @@ export default function SplashScreen() {
             No shopping clutter. Just signal, style, and future drops.
           </Animated.Text>
 
-          {/* TODO: Remove before production */}
-          {__DEV__ && (
-            <View style={styles.devSection}>
-              <Pressable
-                onPress={() => router.replace('/feed')}
-                style={styles.devButton}
-              >
-                <Text style={styles.devButtonText}>⚡ DEV → Feed</Text>
-              </Pressable>
-              <Pressable
-                onPress={() => router.replace('/(calibration)/style-preference')}
-                style={styles.devButton}
-              >
-                <Text style={styles.devButtonText}>⚡ DEV → Onboarding</Text>
-              </Pressable>
-            </View>
-          )}
         </View>
       </ImageBackground>
     </View>

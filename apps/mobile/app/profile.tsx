@@ -204,13 +204,11 @@ export default function ProfileScreen() {
           </Text>
         </View>
 
-        {/* ACTIONS */}
+        {/* SIGN OUT */}
         <View style={styles.actionSection}>
-          <AnimatedButton
-            title="Sign out"
-            onPress={handleSignOut}
-            variant="secondary"
-          />
+          <Pressable style={styles.signOutButton} onPress={handleSignOut}>
+            <Text style={styles.signOutText}>Sign out</Text>
+          </Pressable>
         </View>
 
         {/* DELETE ACCOUNT */}
@@ -228,21 +226,6 @@ export default function ProfileScreen() {
           </Pressable>
           <Text style={styles.deleteCaption}>Permanently removes your account and all data.</Text>
         </View>
-
-        {/* DEV TOOLS */}
-        {__DEV__ && (
-          <View style={styles.devSection}>
-            <AnimatedButton
-              title="⚡ Reset calibration"
-              onPress={() => {
-                haptics.heavy();
-                router.replace('/(calibration)/style-preference');
-              }}
-              variant="secondary"
-              // style={{ flex: 1 }} // need to adjust if variant is used
-            />
-          </View>
-        )}
 
       </ScrollView>
 

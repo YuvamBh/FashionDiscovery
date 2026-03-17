@@ -7,6 +7,7 @@ import {
   Platform,
 } from 'react-native';
 import { router } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GradientBackground } from '../../components/GradientBackground';
 import { signInWithGoogle } from '../../lib/auth';
 import { fonts, size } from '../../lib/tokens';
@@ -16,6 +17,7 @@ import { supabase } from '../../lib/supabase';
 import { AnimatedButton } from '../../components/AnimatedButton';
 
 export default function AuthScreen() {
+  const insets = useSafeAreaInsets();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const authOutcome = useAuthStore((s) => s.authOutcome);
@@ -94,7 +96,7 @@ export default function AuthScreen() {
     <View style={styles.container}>
       <GradientBackground colors={['#0a0a0a', '#111111', '#050505']} />
 
-      <View style={styles.content}>
+      <View style={[styles.content, { paddingTop: insets.top + 40 }]}>
         <View style={styles.header}>
           <Text style={styles.title}>Join the next{'\n'}wave of discovery.</Text>
           <Text style={styles.subtitle}>
@@ -121,7 +123,7 @@ export default function AuthScreen() {
         </View>
       </View>
 
-      <View style={styles.footer}>
+      <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 32) }]}>
         <Text style={styles.termsText}>
           We use your account to personalize discovery{'\n'}and protect signal quality.
         </Text>

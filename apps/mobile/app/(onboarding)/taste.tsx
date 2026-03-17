@@ -4,6 +4,7 @@ import {
   StyleSheet,
   ImageBackground,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { useEffect } from 'react';
 import Animated, {
@@ -20,6 +21,7 @@ import { ProgressDots } from '../../components/onboarding/ProgressDots';
 const ease = Easing.bezier(0.25, 0.1, 0.25, 1);
 
 export default function TasteScreen() {
+  const insets = useSafeAreaInsets();
   const contentOpacity = useSharedValue(0);
   const contentY = useSharedValue(24);
 
@@ -52,7 +54,7 @@ export default function TasteScreen() {
           locations={[0, 0.6, 1]}
         />
         
-        <View style={styles.content}>
+        <View style={[styles.content, { paddingTop: insets.top + 20 }]}>
           <Animated.View style={contentStyle}>
             
             {/* Mock visualization of taste core tags */}
@@ -71,7 +73,7 @@ export default function TasteScreen() {
           </Animated.View>
         </View>
 
-        <View style={styles.bottomSection}>
+        <View style={[styles.bottomSection, { paddingBottom: Math.max(insets.bottom, 40) }]}>
           <ProgressDots total={3} current={2} />
           <AnimatedButton 
             title="Create your profile" 

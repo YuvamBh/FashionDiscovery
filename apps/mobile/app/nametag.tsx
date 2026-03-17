@@ -8,6 +8,7 @@ import {
   KeyboardAvoidingView, 
   Platform,
   ActivityIndicator,
+  ScrollView,
 } from 'react-native';
 import { router } from 'expo-router';
 import Animated, { 
@@ -19,12 +20,14 @@ import Animated, {
   withTiming,
   withRepeat,
 } from 'react-native-reanimated';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, fonts, size, space, tracking } from '../lib/tokens';
 import { useAuthStore } from '../store/authStore';
 import { updateNametag } from '../lib/users';
 import { useHaptics } from '../lib/useHaptics';
 
 export default function NametagScreen() {
+  const insets = useSafeAreaInsets();
   const { userId, fetchProfile } = useAuthStore();
   const haptics = useHaptics();
   const [preferredName, setPreferredName] = useState('');
@@ -34,6 +37,7 @@ export default function NametagScreen() {
   const [error, setError] = useState<string | null>(null);
 
   const errorShake = useSharedValue(0);
+  const vibeHandleRef = useRef<TextInput>(null);
   const numberInputRef = useRef<TextInput>(null);
 
   const triggerError = (msg: string) => {
@@ -107,8 +111,9 @@ export default function NametagScreen() {
     <KeyboardAvoidingView 
       style={styles.container} 
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
     >
-      <View style={styles.inner}>
+      <View style={[styles.inner, { paddingTop: insets.top + space[12] }]}>
         <Animated.View entering={FadeInDown.delay(200).duration(800)}>
           <Text style={styles.title}>IDENTITY</Text>
           <Text style={styles.subtitle}>Let's setup your vibeID!</Text>
@@ -122,9 +127,15 @@ export default function NametagScreen() {
               placeholder="nickname"
               placeholderTextColor={colors.text.tertiary}
               value={preferredName}
-              onChangeText={setPreferredName}
+              onChangeText={(text) => {
+                setPreferredName(text);
+                if (text.length > 0) haptics.selection();
+              }}
               autoFocus
               maxLength={13}
+              returnKeyType="next"
+              onSubmitEditing={() => vibeHandleRef.current?.focus()}
+              blurOnSubmit={false}
             />
           </View>
 
@@ -132,6 +143,7 @@ export default function NametagScreen() {
             <Text style={styles.label}>VIBE TAG</Text>
             <View style={styles.splitInputContainer}>
               <TextInput
+                ref={vibeHandleRef}
                 style={[styles.input, styles.handleInput]}
                 placeholder="abc"
                 placeholderTextColor={colors.text.tertiary}
@@ -139,14 +151,17 @@ export default function NametagScreen() {
                 onChangeText={(text) => {
                   const cleaned = text.replace(/[^a-zA-Z]/g, '').toUpperCase();
                   setTagHandle(cleaned);
-                  if (cleaned.length >= 9) {
+                  if (cleaned.length > 0) haptics.selection();
+                  if (cleaned.length >= 7) {
                     haptics.selection();
-                    numberInputRef.current?.focus();
                   }
                 }}
                 autoCapitalize="characters"
                 autoCorrect={false}
                 maxLength={9 as number}
+                returnKeyType="next"
+                onSubmitEditing={() => numberInputRef.current?.focus()}
+                blurOnSubmit={false}
               />
               <Text style={styles.atSymbol}>@</Text>
               <TextInput
@@ -196,8 +211,7 @@ const styles = StyleSheet.create({
   inner: {
     flex: 1,
     paddingHorizontal: space[8],
-    justifyContent: 'center',
-    paddingBottom: space[16],
+    paddingBottom: space[8],
   },
   title: {
     fontFamily: fonts.display,

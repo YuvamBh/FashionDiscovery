@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, Dimensions } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import Animated, { 
   FadeIn, 
@@ -21,6 +22,7 @@ const { width } = Dimensions.get('window');
 type Phase = 'typewriter1' | 'secured' | 'typewriter2' | 'generating' | 'done';
 
 export default function IdentitySecuredScreen() {
+  const insets = useSafeAreaInsets();
   const { profile } = useAuthStore();
   const haptics = useHaptics();
   const [phase, setPhase] = useState<Phase>('typewriter1');
@@ -99,7 +101,7 @@ export default function IdentitySecuredScreen() {
   }));
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
       <View style={styles.content}>
         <View style={styles.topSection}>
           <Text style={styles.typewriter}>{text}</Text>
