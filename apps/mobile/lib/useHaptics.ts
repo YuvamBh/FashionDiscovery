@@ -1,13 +1,19 @@
 import { Platform } from 'react-native';
 import * as Haptics from 'expo-haptics';
+import Constants from 'expo-constants';
 
 export type HapticType = 'light' | 'medium' | 'heavy' | 'success' | 'error' | 'warning' | 'selection';
 
 export const useHaptics = () => {
   const isWeb = Platform.OS === 'web';
+  const isExpoGo = Constants.appOwnership === 'expo';
 
   const trigger = (type: HapticType) => {
     if (isWeb) return;
+    if (isExpoGo) {
+      if (__DEV__) console.log(`[Haptics] 📳 ${type}`);
+      return;
+    }
     
     // Use .catch to prevent unhandled promise rejections on non-rebuilt dev clients
     try {

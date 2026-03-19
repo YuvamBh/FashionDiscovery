@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { 
   View, 
   Text, 
@@ -8,7 +8,8 @@ import {
   KeyboardAvoidingView, 
   Platform,
   ActivityIndicator,
-  ScrollView,
+  Keyboard,
+  Pressable,
 } from 'react-native';
 import { router } from 'expo-router';
 import Animated, { 
@@ -19,6 +20,9 @@ import Animated, {
   withSequence,
   withTiming,
   withRepeat,
+  withDelay,
+  withSpring,
+  Easing,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, fonts, size, space, tracking } from '../lib/tokens';
@@ -37,8 +41,47 @@ export default function NametagScreen() {
   const [error, setError] = useState<string | null>(null);
 
   const errorShake = useSharedValue(0);
+  const pulseScale = useSharedValue(1);
+  
+  const headlineY = useSharedValue(20);
+  const headlineOpacity = useSharedValue(0);
+  const subtextOpacity = useSharedValue(0);
+  const previewScale = useSharedValue(0.94);
+  const previewOpacity = useSharedValue(0);
+  const formOpacity = useSharedValue(0);
+  const tagScale = useSharedValue(1);
+  const buttonScale = useSharedValue(1);
+
   const vibeHandleRef = useRef<TextInput>(null);
   const numberInputRef = useRef<TextInput>(null);
+
+  // Staggered entry animation
+  useEffect(() => {
+    // Headline enters
+    headlineOpacity.value = withTiming(1, { duration: 500 });
+    headlineY.value = withTiming(0, { duration: 500, easing: Easing.out(Easing.cubic) });
+    
+    // Subtext 80ms later
+    subtextOpacity.value = withDelay(80, withTiming(1, { duration: 400 }));
+    
+    // Preview 160ms later
+    previewOpacity.value = withDelay(160, withTiming(1, { duration: 400 }));
+    previewScale.value = withDelay(160, withSpring(1, { damping: 18, stiffness: 120 }));
+    
+    // Form 240ms later
+    formOpacity.value = withDelay(240, withTiming(1, { duration: 400 }));
+  }, []);
+
+  // Pulse when VibeID is complete
+  useEffect(() => {
+    if (tagHandle.length >= 3 && tagNumber.length === 4) {
+      haptics.medium();
+      pulseScale.value = withSequence(
+        withTiming(1.05, { duration: 200 }),
+        withTiming(1, { duration: 200 })
+      );
+    }
+  }, [tagHandle, tagNumber]);
 
   const triggerError = (msg: string) => {
     haptics.error();
@@ -52,6 +95,36 @@ export default function NametagScreen() {
 
   const errorStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: errorShake.value }],
+  }));
+
+  const pulseStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: pulseScale.value }],
+  }));
+
+  const headlineStyle = useAnimatedStyle(() => ({
+    opacity: headlineOpacity.value,
+    transform: [{ translateY: headlineY.value }]
+  }));
+
+  const subtextStyle = useAnimatedStyle(() => ({
+    opacity: subtextOpacity.value
+  }));
+
+  const previewStyle = useAnimatedStyle(() => ({
+    opacity: previewOpacity.value,
+    transform: [{ scale: previewScale.value }]
+  }));
+
+  const formStyle = useAnimatedStyle(() => ({
+    opacity: formOpacity.value
+  }));
+
+  const tagPreviewStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: tagScale.value }]
+  }));
+
+  const buttonAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: buttonScale.value }]
   }));
 
   const handleSubmit = async () => {
@@ -107,19 +180,34 @@ export default function NametagScreen() {
     }
   };
 
+  const liveTag = tagHandle ? `${tagHandle.toUpperCase()}@${tagNumber || '____'}` : '@____';
+
   return (
     <KeyboardAvoidingView 
       style={styles.container} 
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
     >
-      <View style={[styles.inner, { paddingTop: insets.top + space[12] }]}>
-        <Animated.View entering={FadeInDown.delay(200).duration(800)}>
-          <Text style={styles.title}>IDENTITY</Text>
-          <Text style={styles.subtitle}>Let's setup your vibeID!</Text>
+      <View style={[styles.inner, { 
+        paddingTop: insets.top + space[8],
+        paddingHorizontal: space[7],
+        paddingBottom: insets.bottom + space[6]
+      }]}>
+        
+        <Animated.View style={headlineStyle}>
+          <Text style={styles.headline}>Your signal.</Text>
+        </Animated.View>
+        <Animated.View style={subtextStyle}>
+          <Text style={styles.subtext}>Not your name. How the feed knows you.</Text>
         </Animated.View>
 
-        <Animated.View entering={FadeInDown.delay(400).duration(800)} style={styles.form}>
+        <Animated.View style={[styles.previewContainer, previewStyle]}>
+          <Animated.Text style={[styles.livePreview, pulseStyle, tagPreviewStyle]}>
+            {liveTag}
+          </Animated.Text>
+        </Animated.View>
+
+        <Animated.View style={[styles.form, formStyle]}>
           <View style={styles.inputGroup}>
             <Text style={styles.label}>NICKNAME</Text>
             <TextInput
@@ -152,9 +240,10 @@ export default function NametagScreen() {
                   const cleaned = text.replace(/[^a-zA-Z]/g, '').toUpperCase();
                   setTagHandle(cleaned);
                   if (cleaned.length > 0) haptics.selection();
-                  if (cleaned.length >= 7) {
-                    haptics.selection();
-                  }
+                  tagScale.value = withSequence(
+                    withSpring(1.06, { damping: 8, stiffness: 300 }),
+                    withSpring(1.0, { damping: 12, stiffness: 200 })
+                  );
                 }}
                 autoCapitalize="characters"
                 autoCorrect={false}
@@ -173,6 +262,15 @@ export default function NametagScreen() {
                 onChangeText={(text) => {
                   const cleaned = text.replace(/[^0-9]/g, '');
                   setTagNumber(cleaned);
+                  if (cleaned.length > 0) {
+                    tagScale.value = withSequence(
+                      withSpring(1.06, { damping: 8, stiffness: 300 }),
+                      withSpring(1.0, { damping: 12, stiffness: 200 })
+                    );
+                  }
+                  if (cleaned.length === 4) {
+                    Keyboard.dismiss();
+                  }
                 }}
                 keyboardType="number-pad"
                 maxLength={4 as number}
@@ -186,17 +284,28 @@ export default function NametagScreen() {
             </Animated.View>
           )}
 
-          <TouchableOpacity 
-            style={[styles.button, (!preferredName || !tagHandle || tagNumber.length < 4) && styles.buttonDisabled]}
-            onPress={handleSubmit}
-            disabled={loading}
-          >
-            {loading ? (
-              <ActivityIndicator color={colors.text.primary} />
-            ) : (
-              <Text style={styles.buttonText}>SECURE IDENTITY</Text>
-            )}
-          </TouchableOpacity>
+          <Animated.View style={buttonAnimatedStyle}>
+            <Pressable 
+              style={[styles.button, (!preferredName || !tagHandle || tagNumber.length < 4) && styles.buttonDisabled]}
+              onPress={handleSubmit}
+              disabled={loading || (!preferredName || !tagHandle || tagNumber.length < 4)}
+              onPressIn={() => {
+                if (!loading && preferredName && tagHandle && tagNumber.length === 4) {
+                  haptics.medium();
+                  buttonScale.value = withSpring(0.96, { damping: 12, stiffness: 300 });
+                }
+              }}
+              onPressOut={() => {
+                buttonScale.value = withSpring(1.0, { damping: 10, stiffness: 200 });
+              }}
+            >
+              {loading ? (
+                <ActivityIndicator color={colors.text.primary} />
+              ) : (
+                <Text style={styles.buttonText}>MINT IDENTITY</Text>
+              )}
+            </Pressable>
+          </Animated.View>
         </Animated.View>
       </View>
     </KeyboardAvoidingView>
@@ -210,22 +319,34 @@ const styles = StyleSheet.create({
   },
   inner: {
     flex: 1,
-    paddingHorizontal: space[8],
-    paddingBottom: space[8],
   },
-  title: {
+  headline: {
     fontFamily: fonts.display,
-    fontSize: size.xl * 1.5,
+    fontSize: 56,
     color: colors.text.primary,
-    letterSpacing: tracking.widest,
-    marginBottom: space[2],
+    letterSpacing: tracking.tight,
+    lineHeight: 58,
   },
-  subtitle: {
+  subtext: {
     fontFamily: fonts.body,
-    fontSize: size.md,
-    color: colors.text.secondary,
-    letterSpacing: tracking.wide,
+    fontSize: size.base,
+    color: colors.text.tertiary,
+    marginTop: space[3],
+    lineHeight: 22,
+  },
+  previewContainer: {
+    marginTop: space[10],
     marginBottom: space[10],
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: 60,
+  },
+  livePreview: {
+    fontFamily: fonts.display,
+    fontSize: 40,
+    color: colors.text.primary,
+    letterSpacing: tracking.wide,
+    textAlign: 'center',
   },
   form: {
     gap: space[8],

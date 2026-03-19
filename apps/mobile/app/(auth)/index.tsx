@@ -13,7 +13,6 @@ import { signInWithGoogle } from '../../lib/auth';
 import { fonts, size } from '../../lib/tokens';
 import { useAuthStore } from '../../store/authStore';
 import { useHaptics } from '../../lib/useHaptics';
-import { supabase } from '../../lib/supabase';
 import { AnimatedButton } from '../../components/AnimatedButton';
 
 export default function AuthScreen() {
@@ -32,30 +31,6 @@ export default function AuthScreen() {
     useAuthStore.setState({ authOutcome: null });
     router.replace(`/${authOutcome}` as any);
   }, [authOutcome]);
-
-  // Safety: If stuck in loading for > 12s, re-check session manually
-  // Only trigger if we haven't already received an authOutcome
-  useEffect(() => {
-    if (!loading || authOutcome) return;
-    const timer = setTimeout(async () => {
-      // Re-read store state in case it updated during the timeout
-      const currentOutcome = useAuthStore.getState().authOutcome;
-      if (currentOutcome) return;
-
-      console.log('[AuthScreen] Loading took > 12s. Re-checking session...');
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session?.user) {
-        const profile = await useAuthStore.getState().fetchProfile(session.user.id);
-        const outcome = profile?.onboarding_completed ? 'feed' : 'nametag';
-        useAuthStore.setState({ isAuthReady: true, authOutcome: outcome as any });
-      } else {
-        setLoading(false);
-        setError('Sign in timed out. Please try again.');
-        haptics.error();
-      }
-    }, 12000); // Increased to 12s for slower connections
-    return () => clearTimeout(timer);
-  }, [loading, authOutcome]);
 
   useEffect(() => {
     return () => { setLoading(false); };
