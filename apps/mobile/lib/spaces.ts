@@ -49,6 +49,12 @@ async function fetchItemsForSpace(spaceId: string): Promise<SpaceItem[]> {
   }));
 }
 
+export type SpacePreference = {
+  spaceId: string
+  isActive: boolean
+  displayOrder: number
+}
+
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 export async function getSpaces(): Promise<Space[]> {
@@ -76,6 +82,107 @@ export async function getSpaces(): Promise<Space[]> {
     return [];
   }
 }
+
+export async function getUserSpaces(userId: string): Promise<Space[]> {
+  const { data, error } = await supabase
+    .from('user_space_preferences')
+    .select('space_id, display_order')
+    .eq('user_id', userId)
+    .eq('is_active', true)
+    .order('display_order');
+
+  if (error || !data || data.length === 0) return getSpaces();
+
+  const spaces = await Promise.all(
+    data.map((row: any) => getSpaceById(row.space_id)),
+  );
+  return spaces.filter((s): s is Space => s !== null);
+}
+
+export async function getUserSpacePreferences(
+  userId: string,
+): Promise<SpacePreference[]> {
+  const { data, error } = await supabase
+    .from('user_space_preferences')
+    .select('space_id, is_active, display_order')
+    .eq('user_id', userId)
+    .order('display_order');
+
+  if (error || !data) return [];
+
+  return data.map((row: any) => ({
+    spaceId: row.space_id,
+    isActive: row.is_active,
+    displayOrder: row.display_order,
+  }));
+}
+
+export async function setSpacePreferences(
+  userId: string,
+  activeSpaceIds: string[],
+): Promise<{ error: any }> {
+  const current = await getUserSpacePreferences(userId);
+
+  const upsertRows = activeSpaceIds.map((spaceId, index) => ({
+    user_id: userId,
+    space_id: spaceId,
+    is_active: true,
+    display_order: index,
+  }));
+
+  const { error: upsertError } = await supabase
+    .from('user_space_preferences')
+    .upsert(upsertRows, { onConflict: 'user_id,space_id' });
+
+  if (upsertError) return { error: upsertError };
+
+  const deactivated = current
+    .filter((p) => p.isActive && !activeSpaceIds.includes(p.spaceId))
+    .map((p) => p.spaceId);
+
+  if (deactivated.length > 0) {
+    const { error: deactivateError } = await supabase
+      .from('user_space_preferences')
+      .update({ is_active: false })
+      .eq('user_id', userId)
+      .in('space_id', deactivated);
+
+    if (deactivateError) return { error: deactivateError };
+  }
+
+  return { error: null };
+}
+
+export async function recordBrandSentiment(
+  userId: string,
+  brandId: string,
+  sentiment: 'more' | 'less' | 'blocked',
+): Promise<{ error: any }> {
+  const { error } = await supabase
+    .from('brand_interest')
+    .upsert(
+      { user_id: userId, brand_id: brandId, sentiment, updated_at: new Date().toISOString() },
+      { onConflict: 'user_id,brand_id' },
+    );
+  return { error };
+}
+
+export async function getUserBrandSentiments(
+  userId: string,
+): Promise<Record<string, 'more' | 'less' | 'blocked'>> {
+  const { data, error } = await supabase
+    .from('brand_interest')
+    .select('brand_id, sentiment')
+    .eq('user_id', userId);
+
+  if (error || !data) return {};
+
+  return Object.fromEntries(
+    data.map((row: any) => [row.brand_id, row.sentiment]),
+  );
+}
+
+export const getAllSpaces = getSpaces;
 
 export async function getSpaceById(id: string): Promise<Space | null> {
   try {

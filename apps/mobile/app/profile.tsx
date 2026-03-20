@@ -6,32 +6,181 @@ import {
   ScrollView,
   Pressable,
   StyleSheet,
-  Alert,
+  Switch,
+  TextInput,
   ActivityIndicator,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { router } from 'expo-router';
 import Animated, { useSharedValue, useAnimatedStyle, withTiming } from 'react-native-reanimated';
+import { router } from 'expo-router';
 import { colors, fonts, size, space, tracking } from '../lib/tokens';
 import { useAuthStore } from '../store/authStore';
-import { supabase } from '../lib/supabase';
-import { deleteAccount } from '../lib/users';
-import { getUserSignalCount } from '../lib/signals';
 import { useFeedStore } from '../store/feedStore';
+import { updateUserProfile } from '../lib/users';
+import { getUserSignalCount } from '../lib/signals';
 import { TabBar } from '../components/TabBar';
-import { AnimatedButton } from '../components/AnimatedButton';
 import { useHaptics } from '../lib/useHaptics';
+import { supabase } from '../lib/supabase';
+
+// ── helpers ───────────────────────────────────────────────────────────────────
+
+function formatJoinDate(iso: string | null): string {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+}
+
+const BUDGET_LABELS: Record<string, string> = {
+  under_100: 'Under $100',
+  '100_300': '$100–300',
+  '300_600': '$300–600',
+  '600_1000': '$600–1k',
+  '1000_plus': '$1k+',
+};
+
+const FREQ_LABELS: Record<string, string> = {
+  weekly: 'Weekly',
+  monthly: 'Monthly',
+  seasonally: 'Seasonally',
+  rarely: 'Rarely',
+};
+
+// ── sub-components ────────────────────────────────────────────────────────────
+
+function SectionLabel({ label }: { label: string }) {
+  return (
+    <Text style={subStyles.sectionLabel}>{label}</Text>
+  );
+}
+
+function Divider() {
+  return <View style={subStyles.divider} />;
+}
+
+function InfoRow({
+  label,
+  value,
+  onPress,
+  isEditing,
+}: {
+  label: string;
+  value: string | null | undefined;
+  onPress?: () => void;
+  isEditing: boolean;
+}) {
+  return (
+    <Pressable
+      style={subStyles.infoRow}
+      onPress={isEditing ? onPress : undefined}
+      disabled={!isEditing}
+    >
+      <Text style={subStyles.infoLabel}>{label}</Text>
+      <View style={subStyles.infoRight}>
+        {value ? (
+          <Text style={subStyles.infoValue}>{value}</Text>
+        ) : (
+          <Text style={subStyles.infoEmpty}>Set</Text>
+        )}
+        {isEditing && <Text style={subStyles.infoChevron}>›</Text>}
+      </View>
+    </Pressable>
+  );
+}
+
+function PickerOptions({
+  options,
+  selected,
+  onSelect,
+}: {
+  options: Array<{ value: string; label: string }>;
+  selected: string | null;
+  onSelect: (value: string) => void;
+}) {
+  return (
+    <View style={subStyles.pickerOptions}>
+      {options.map((opt) => (
+        <Pressable
+          key={opt.value}
+          style={subStyles.pickerOption}
+          onPress={() => onSelect(opt.value)}
+        >
+          <Text
+            style={[
+              subStyles.pickerOptionText,
+              selected === opt.value && subStyles.pickerOptionSelected,
+            ]}
+          >
+            {opt.label}
+          </Text>
+          {selected === opt.value && (
+            <Text style={subStyles.pickerCheck}>✓</Text>
+          )}
+        </Pressable>
+      ))}
+    </View>
+  );
+}
+
+// ── picker data ───────────────────────────────────────────────────────────────
+
+const AGE_OPTIONS = [
+  { value: '16-20', label: '16 – 20' },
+  { value: '21-25', label: '21 – 25' },
+  { value: '26-30', label: '26 – 30' },
+  { value: '31-35', label: '31 – 35' },
+  { value: '36-40', label: '36 – 40' },
+  { value: '40+', label: '40+' },
+];
+
+const GENDER_OPTIONS = [
+  { value: 'masculine', label: 'Masculine' },
+  { value: 'feminine', label: 'Feminine' },
+  { value: 'androgynous', label: 'Androgynous' },
+  { value: 'fluid', label: 'Gender fluid' },
+  { value: 'prefer_not', label: 'Prefer not to say' },
+];
+
+const BUDGET_OPTIONS = [
+  { value: 'under_100', label: 'Under $100' },
+  { value: '100_300', label: '$100 – $300' },
+  { value: '300_600', label: '$300 – $600' },
+  { value: '600_1000', label: '$600 – $1,000' },
+  { value: '1000_plus', label: '$1,000+' },
+];
+
+const FREQ_OPTIONS = [
+  { value: 'weekly', label: 'Weekly' },
+  { value: 'monthly', label: 'Monthly' },
+  { value: 'seasonally', label: 'Each season' },
+  { value: 'rarely', label: 'Rarely' },
+];
+
+// ── main component ────────────────────────────────────────────────────────────
 
 export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
-  const { profile, fetchProfile, userId, clearAuth, signOutUser } = useAuthStore();
+  const { profile, fetchProfile, userId, signOutUser } = useAuthStore();
   const haptics = useHaptics();
   const savedCount = useFeedStore((s) => s.savedItems.length);
-  const [signalCount, setSignalCount] = useState<number | null>(null);
-  const [isDeleting, setIsDeleting] = useState(false);
-  const influenceWidth = useSharedValue(0);
 
-  // Fetch profile + live signal count on mount
+  // UI state
+  const [isEditing, setIsEditing] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [signalCount, setSignalCount] = useState<number | null>(null);
+  const [expandedPicker, setExpandedPicker] = useState<string | null>(null);
+
+  // Draft fields
+  const [draftBio, setDraftBio] = useState('');
+  const [draftInstagram, setDraftInstagram] = useState('');
+  const [draftAgeRange, setDraftAgeRange] = useState<string | null>(null);
+  const [draftGender, setDraftGender] = useState<string | null>(null);
+  const [draftCity, setDraftCity] = useState('');
+  const [draftBudget, setDraftBudget] = useState<string | null>(null);
+  const [draftFrequency, setDraftFrequency] = useState<string | null>(null);
+
+  // Animated values
+  const influenceWidth = useSharedValue(0);
+  const completionWidth = useSharedValue(0);
+
   useEffect(() => {
     if (!userId) return;
     if (!profile) fetchProfile(userId);
@@ -41,56 +190,89 @@ export default function ProfileScreen() {
   useEffect(() => {
     if (profile) {
       influenceWidth.value = withTiming(profile.authority_score ?? 0, { duration: 1000 });
+      completionWidth.value = withTiming(profile.profile_completion_score ?? 0, { duration: 1200 });
     }
   }, [profile]);
 
   const influenceStyle = useAnimatedStyle(() => ({
     width: `${influenceWidth.value}%` as any,
   }));
+  const completionStyle = useAnimatedStyle(() => ({
+    width: `${completionWidth.value}%` as any,
+  }));
 
-  const handleSignOut = async () => {
+  // ── edit flow ───────────────────────────────────────────────────────────────
+
+  const onPressEdit = () => {
+    setDraftBio(profile?.bio ?? '');
+    setDraftInstagram(profile?.instagram_handle ?? '');
+    setDraftAgeRange(profile?.age_range ?? null);
+    setDraftGender(profile?.gender_expression ?? null);
+    setDraftCity(profile?.location_city ?? '');
+    setDraftBudget(profile?.budget_range ?? null);
+    setDraftFrequency(profile?.shopping_frequency ?? null);
     haptics.light();
-    await signOutUser();
-    // _layout.tsx onAuthStateChange also handles this, but store method is more robust
-    router.replace('/');
+    setIsEditing(true);
   };
 
-  const handleDeleteAccount = () => {
-    haptics.warning();
-    Alert.alert(
-      'Delete Account',
-      'This will permanently delete your account and all your data — signals, taste profile, everything. This cannot be undone.',
-      [
-        { text: 'Cancel', style: 'cancel', onPress: () => haptics.selection() },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            if (!userId) return;
-            setIsDeleting(true);
-            haptics.heavy();
-            
-            const { error } = await deleteAccount(userId);
-            
-            if (error) {
-              console.error('[Profile] Delete error:', error);
-              haptics.error();
-              Alert.alert(
-                'Deletion Failed',
-                'Make sure you have run the delete_user SQL function in your Supabase Editor.'
-              );
-              setIsDeleting(false);
-              return;
-            }
-
-            haptics.success();
-            await signOutUser();
-            router.replace('/');
-          },
-        },
-      ],
-    );
+  const onPressDone = async () => {
+    if (!userId) return;
+    setIsSaving(true);
+    haptics.medium();
+    const updates = {
+      bio: draftBio || null,
+      instagram_handle: draftInstagram || null,
+      age_range: draftAgeRange,
+      gender_expression: draftGender,
+      location_city: draftCity || null,
+      budget_range: draftBudget,
+      shopping_frequency: draftFrequency,
+    };
+    await updateUserProfile(userId, updates);
+    await fetchProfile(userId);
+    haptics.success();
+    setIsEditing(false);
+    setIsSaving(false);
+    setExpandedPicker(null);
   };
+
+  const onPressCancel = () => {
+    haptics.light();
+    setIsEditing(false);
+    setExpandedPicker(null);
+  };
+
+  const togglePicker = (key: string) => {
+    haptics.selection();
+    setExpandedPicker((prev) => (prev === key ? null : key));
+  };
+
+  const handleToggleSwitch = async (
+    field: 'notifications_enabled' | 'data_sharing_enabled',
+    value: boolean,
+  ) => {
+    if (!userId) return;
+    haptics.light();
+    await updateUserProfile(userId, { [field]: value });
+    await fetchProfile(userId);
+  };
+
+  // ── derived display values ──────────────────────────────────────────────────
+
+  const displayName = profile?.display_name ?? 'Discoverer';
+  const avatarUrl = profile?.avatar_url ?? null;
+  const vibeTag = profile?.user_tag ?? null;
+  const energies = profile?.fashion_preferences?.energies ?? [];
+  const brandAffinity = profile?.fashion_preferences?.brand_affinity ?? [];
+  const completionScore = profile?.profile_completion_score ?? 0;
+  const authorityScore = profile?.authority_score ?? 0;
+  const authorityLevel =
+    authorityScore >= 75
+      ? 'Taste Authority'
+      : authorityScore >= 40
+      ? 'Rising Tastemaker'
+      : 'New Discoverer';
+  const totalSignals = signalCount ?? profile?.total_signals ?? 0;
 
   if (!profile && !userId) {
     return (
@@ -100,132 +282,384 @@ export default function ProfileScreen() {
     );
   }
 
-  const displayName = profile?.display_name ?? 'Discoverer';
-  const email = profile?.email ?? '';
-  const avatarUrl = profile?.avatar_url ?? null;
-  const aestheticVibe = profile?.aesthetic_vibe ?? null;
-  const energies = profile?.fashion_preferences?.energies ?? [];
-  const brandAffinity = profile?.fashion_preferences?.brand_affinity ?? [];
-  const totalSignals = signalCount ?? profile?.total_signals ?? 0;
-  const authorityScore = profile?.authority_score ?? 0;
-  const authorityLevel =
-    authorityScore >= 75
-      ? 'Taste Authority'
-      : authorityScore >= 40
-      ? 'Rising Tastemaker'
-      : 'New Discoverer';
-
   return (
     <View style={styles.container}>
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
 
-        {/* HEADER */}
-        <View style={[styles.header, { paddingTop: insets.top + 24 }]}>
+        {/* ── HEADER ── */}
+        <View style={[styles.header, { paddingTop: insets.top + 20 }]}>
           <Text style={styles.headerLabel}>PROFILE</Text>
-        </View>
-
-        {/* IDENTITY */}
-        <View style={styles.identity}>
-          {avatarUrl ? (
-            <Image source={{ uri: avatarUrl }} style={styles.avatar} />
-          ) : (
-            <View style={styles.avatarPlaceholder}>
-              <Text style={styles.avatarInitial}>{displayName.charAt(0).toUpperCase()}</Text>
-            </View>
-          )}
-          <View style={styles.identityInfo}>
-            <Text style={styles.displayName}>{displayName}</Text>
-            {profile?.user_tag && (
-              <Text style={styles.userTag}>{profile.user_tag}</Text>
-            )}
-            <Text style={styles.email}>{email}</Text>
-            {aestheticVibe && (
-              <View style={styles.vibeBadge}>
-                <Text style={styles.vibeBadgeText}>{aestheticVibe.toUpperCase()}</Text>
+          <View style={styles.headerActions}>
+            {!isEditing ? (
+              <Pressable onPress={onPressEdit}>
+                <Text style={styles.headerActionPrimary}>Edit</Text>
+              </Pressable>
+            ) : (
+              <View style={styles.headerEditRow}>
+                <Pressable onPress={onPressCancel}>
+                  <Text style={styles.headerActionSecondary}>Cancel</Text>
+                </Pressable>
+                <Pressable onPress={onPressDone} disabled={isSaving}>
+                  {isSaving ? (
+                    <ActivityIndicator size="small" color={colors.text.primary} />
+                  ) : (
+                    <Text style={styles.headerActionPrimary}>Done</Text>
+                  )}
+                </Pressable>
               </View>
             )}
           </View>
         </View>
 
-        {/* STATS ROW */}
-        <View style={styles.statsRow}>
-          <View style={styles.statItem}>
-            <Text style={styles.statValue}>{totalSignals}</Text>
-            <Text style={styles.statLabel}>SIGNALS</Text>
+        {/* ── SECTION 1: IDENTITY ── */}
+        <View style={styles.identity}>
+          <View style={styles.avatarContainer}>
+            {avatarUrl ? (
+              <Image source={{ uri: avatarUrl }} style={styles.avatar} />
+            ) : (
+              <View style={styles.avatarPlaceholder}>
+                <Text style={styles.avatarInitial}>
+                  {displayName.charAt(0).toUpperCase()}
+                </Text>
+              </View>
+            )}
           </View>
-          <View style={styles.statDivider} />
-          <View style={styles.statItem}>
-            <Text style={styles.statValue}>{Math.round(authorityScore)}</Text>
-            <Text style={styles.statLabel}>AUTHORITY</Text>
-          </View>
-          <View style={styles.statDivider} />
-          <View style={styles.statItem}>
-            <Text style={styles.statValue}>{savedCount}</Text>
-            <Text style={styles.statLabel}>SAVED</Text>
+
+          <View style={styles.identityInfo}>
+            <Text style={styles.displayName}>{displayName}</Text>
+            {vibeTag && (
+              <Text style={styles.vibeTag}>{vibeTag}</Text>
+            )}
+            <Text style={styles.email}>{profile?.email ?? ''}</Text>
+            {profile?.aesthetic_vibe && (
+              <View style={styles.aestheticBadge}>
+                <Text style={styles.aestheticBadgeText}>
+                  {profile.aesthetic_vibe.toUpperCase()}
+                </Text>
+              </View>
+            )}
           </View>
         </View>
 
-        {/* TASTE SECTION */}
-        {energies.length > 0 && (
-          <View style={styles.section}>
-            <Text style={styles.sectionLabel}>YOUR ENERGY</Text>
-            <View style={styles.pillsRow}>
+        {/* Bio */}
+        <View style={styles.bioContainer}>
+          {isEditing ? (
+            <TextInput
+              style={styles.bioInput}
+              value={draftBio}
+              onChangeText={setDraftBio}
+              placeholder="Your aesthetic in a sentence..."
+              placeholderTextColor={colors.text.tertiary}
+              multiline
+              maxLength={120}
+            />
+          ) : (
+            <Text style={profile?.bio ? styles.bioText : styles.bioEmpty}>
+              {profile?.bio ?? 'Add a bio →'}
+            </Text>
+          )}
+        </View>
+
+        {/* Instagram */}
+        {(isEditing || profile?.instagram_handle) && (
+          <View style={styles.instagramContainer}>
+            {isEditing ? (
+              <View style={styles.instagramInputRow}>
+                <Text style={styles.instagramAt}>@</Text>
+                <TextInput
+                  style={styles.instagramInput}
+                  value={draftInstagram}
+                  onChangeText={setDraftInstagram}
+                  placeholder="instagram"
+                  placeholderTextColor={colors.text.tertiary}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+              </View>
+            ) : (
+              <Text style={styles.instagramHandle}>@{profile?.instagram_handle}</Text>
+            )}
+          </View>
+        )}
+
+        {/* Completion bar */}
+        <View style={styles.completionSection}>
+          <View style={styles.completionHeader}>
+            <Text style={styles.completionLabel}>PROFILE STRENGTH</Text>
+            <Text style={styles.completionScore}>{completionScore}%</Text>
+          </View>
+          <View style={styles.completionTrack}>
+            <Animated.View style={[styles.completionFill, completionStyle]} />
+          </View>
+          <Text style={styles.completionCaption}>
+            {completionScore < 60
+              ? 'Complete your profile to increase your signal weight with brands'
+              : 'Strong profile. Brands see your signals clearly.'}
+          </Text>
+        </View>
+
+        <Divider />
+
+        {/* ── SECTION 2: STATS ── */}
+        <SectionLabel label="ACTIVITY" />
+        <View style={styles.statsGrid}>
+          <View style={[styles.statCell, styles.statCellRight, styles.statCellBottom]}>
+            <Text style={styles.statValue}>{totalSignals}</Text>
+            <Text style={styles.statLabel}>SIGNALS</Text>
+          </View>
+          <View style={[styles.statCell, styles.statCellBottom]}>
+            <Text style={styles.statValue}>{savedCount}</Text>
+            <Text style={styles.statLabel}>SAVED</Text>
+          </View>
+          <View style={[styles.statCell, styles.statCellRight]}>
+            <Text style={styles.statValue}>{Math.round(authorityScore)}</Text>
+            <Text style={styles.statLabel}>AUTHORITY</Text>
+          </View>
+          <View style={styles.statCell}>
+            <Text style={styles.statValue}>{formatJoinDate(profile?.created_at ?? null)}</Text>
+            <Text style={styles.statLabel}>SINCE</Text>
+          </View>
+        </View>
+
+        <Divider />
+
+        {/* ── SECTION 3: TASTE DNA ── */}
+        <SectionLabel label="TASTE DNA" />
+
+        <View style={styles.influenceRow}>
+          <View style={styles.influenceHeader}>
+            <Text style={styles.influenceLevel}>{authorityLevel}</Text>
+            <Text style={styles.influenceCaption}>signal weight</Text>
+          </View>
+          <View style={styles.influenceTrack}>
+            <Animated.View style={[styles.influenceFill, influenceStyle]} />
+          </View>
+        </View>
+
+        {energies.length > 0 ? (
+          <View style={styles.pillSection}>
+            <Text style={styles.pillSectionLabel}>YOUR ENERGY</Text>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.pillsScroll}
+            >
               {energies.map((e: string) => (
                 <View key={e} style={styles.pill}>
                   <Text style={styles.pillText}>{e}</Text>
                 </View>
               ))}
-            </View>
+            </ScrollView>
           </View>
+        ) : (
+          <Text style={styles.tastePlaceholder}>
+            Signal items to build your taste profile
+          </Text>
         )}
 
-        {/* BRAND AFFINITY */}
         {brandAffinity.length > 0 && (
-          <View style={styles.section}>
-            <Text style={styles.sectionLabel}>YOUR BRANDS</Text>
-            <View style={styles.pillsRow}>
+          <View style={styles.pillSection}>
+            <Text style={styles.pillSectionLabel}>YOUR BRANDS</Text>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.pillsScroll}
+            >
               {brandAffinity.map((b: string) => (
                 <View key={b} style={styles.pill}>
                   <Text style={styles.pillText}>{b}</Text>
                 </View>
               ))}
-            </View>
+            </ScrollView>
           </View>
         )}
 
-        {/* INFLUENCE BAR */}
-        <View style={styles.section}>
-          <Text style={styles.sectionLabel}>INFLUENCE</Text>
-          <View style={styles.influenceTrack}>
-            <Animated.View style={[styles.influenceFill, influenceStyle]} />
+        <Divider />
+
+        {/* ── SECTION 4: ACCOUNT INFO ── */}
+        <SectionLabel label="ACCOUNT" />
+
+        <InfoRow
+          label="AGE RANGE"
+          value={draftAgeRange ?? profile?.age_range ?? null}
+          onPress={() => togglePicker('age')}
+          isEditing={isEditing}
+        />
+        {isEditing && expandedPicker === 'age' && (
+          <PickerOptions
+            options={AGE_OPTIONS}
+            selected={draftAgeRange}
+            onSelect={(v) => { setDraftAgeRange(v); haptics.selection(); setExpandedPicker(null); }}
+          />
+        )}
+
+        <InfoRow
+          label="EXPRESSION"
+          value={draftGender ?? profile?.gender_expression ?? null}
+          onPress={() => togglePicker('gender')}
+          isEditing={isEditing}
+        />
+        {isEditing && expandedPicker === 'gender' && (
+          <PickerOptions
+            options={GENDER_OPTIONS}
+            selected={draftGender}
+            onSelect={(v) => { setDraftGender(v); haptics.selection(); setExpandedPicker(null); }}
+          />
+        )}
+
+        {isEditing ? (
+          <View style={subStyles.infoRow}>
+            <Text style={subStyles.infoLabel}>LOCATION</Text>
+            <TextInput
+              style={styles.inlineInput}
+              value={draftCity}
+              onChangeText={setDraftCity}
+              placeholder="City"
+              placeholderTextColor={colors.text.tertiary}
+              autoCorrect={false}
+            />
           </View>
-          <Text style={styles.influenceCaption}>
-            Your signals carry <Text style={styles.influenceLevelText}>{authorityLevel}</Text> weight with brands
-          </Text>
+        ) : (
+          <InfoRow
+            label="LOCATION"
+            value={profile?.location_city ?? null}
+            isEditing={false}
+          />
+        )}
+
+        <InfoRow
+          label="BUDGET"
+          value={
+            isEditing
+              ? (draftBudget ? BUDGET_LABELS[draftBudget] : null)
+              : (profile?.budget_range ? BUDGET_LABELS[profile.budget_range] : null)
+          }
+          onPress={() => togglePicker('budget')}
+          isEditing={isEditing}
+        />
+        {isEditing && expandedPicker === 'budget' && (
+          <PickerOptions
+            options={BUDGET_OPTIONS}
+            selected={draftBudget}
+            onSelect={(v) => { setDraftBudget(v); haptics.selection(); setExpandedPicker(null); }}
+          />
+        )}
+
+        <InfoRow
+          label="SHOPS"
+          value={
+            isEditing
+              ? (draftFrequency ? FREQ_LABELS[draftFrequency] : null)
+              : (profile?.shopping_frequency ? FREQ_LABELS[profile.shopping_frequency] : null)
+          }
+          onPress={() => togglePicker('freq')}
+          isEditing={isEditing}
+        />
+        {isEditing && expandedPicker === 'freq' && (
+          <PickerOptions
+            options={FREQ_OPTIONS}
+            selected={draftFrequency}
+            onSelect={(v) => { setDraftFrequency(v); haptics.selection(); setExpandedPicker(null); }}
+          />
+        )}
+
+        <Divider />
+
+        {/* ── SECTION 5: PREFERENCES ── */}
+        <SectionLabel label="PREFERENCES" />
+
+        <View style={styles.toggleRow}>
+          <View style={styles.toggleInfo}>
+            <Text style={styles.toggleTitle}>Notifications</Text>
+            <Text style={styles.toggleSubtitle}>Drops and taste updates</Text>
+          </View>
+          <Switch
+            value={profile?.notifications_enabled ?? true}
+            onValueChange={(v) => handleToggleSwitch('notifications_enabled', v)}
+            trackColor={{ false: colors.border.default, true: colors.text.primary }}
+            thumbColor={colors.bg.primary}
+          />
         </View>
 
-        {/* SIGN OUT */}
-        <View style={styles.actionSection}>
-          <Pressable style={styles.signOutButton} onPress={handleSignOut}>
-            <Text style={styles.signOutText}>Sign out</Text>
-          </Pressable>
+        <View style={styles.toggleRow}>
+          <View style={styles.toggleInfo}>
+            <Text style={styles.toggleTitle}>Data & Insights</Text>
+            <Text style={styles.toggleSubtitle}>Helps improve your taste signal accuracy</Text>
+          </View>
+          <Switch
+            value={profile?.data_sharing_enabled ?? true}
+            onValueChange={(v) => handleToggleSwitch('data_sharing_enabled', v)}
+            trackColor={{ false: colors.border.default, true: colors.text.primary }}
+            thumbColor={colors.bg.primary}
+          />
         </View>
 
-        {/* DELETE ACCOUNT */}
-        <View style={styles.deleteSection}>
-          <Pressable
-            style={[styles.deleteButton, isDeleting && { opacity: 0.5 }]}
-            onPress={handleDeleteAccount}
-            disabled={isDeleting}
-          >
-            {isDeleting ? (
-              <ActivityIndicator size="small" color="#8A4A4A" />
-            ) : (
-              <Text style={styles.deleteText}>Delete account</Text>
-            )}
-          </Pressable>
-          <Text style={styles.deleteCaption}>Permanently removes your account and all data.</Text>
-        </View>
+        <Divider />
+
+        {/* ── SECTION 6: ACCOUNT ACTIONS ── */}
+
+        <Pressable
+          style={styles.actionButton}
+          onPress={async () => {
+            haptics.light();
+            await signOutUser();
+            router.replace('/');
+          }}
+        >
+          <Text style={styles.actionButtonText}>Sign out</Text>
+        </Pressable>
+
+        <Pressable
+          style={[styles.actionButton, styles.deleteButton]}
+          onPress={() => {
+            haptics.warning();
+            import('react-native').then(({ Alert }) =>
+              Alert.alert(
+                'Delete Account',
+                'This will permanently delete your account and all your data — signals, taste profile, everything. This cannot be undone.',
+                [
+                  { text: 'Cancel', style: 'cancel', onPress: () => haptics.selection() },
+                  {
+                    text: 'Delete',
+                    style: 'destructive',
+                    onPress: async () => {
+                      haptics.heavy();
+                      await supabase.rpc('delete_user');
+                      await signOutUser();
+                      router.replace('/');
+                    },
+                  },
+                ],
+              ),
+            );
+          }}
+        >
+          <Text style={styles.deleteButtonText}>Delete account</Text>
+        </Pressable>
+
+        {__DEV__ && (
+          <View style={styles.devSection}>
+            <Pressable
+              style={styles.devButton}
+              onPress={async () => {
+                if (userId) await updateUserProfile(userId, { onboarding_completed: false });
+                router.replace('/nametag');
+              }}
+            >
+              <Text style={styles.devButtonText}>⚡ Reset onboarding</Text>
+            </Pressable>
+            <Pressable
+              style={styles.devButton}
+              onPress={() => router.replace('/feed')}
+            >
+              <Text style={styles.devButtonText}>⚡ Go to feed</Text>
+            </Pressable>
+          </View>
+        )}
 
       </ScrollView>
 
@@ -233,6 +667,90 @@ export default function ProfileScreen() {
     </View>
   );
 }
+
+// ── sub-component styles ──────────────────────────────────────────────────────
+
+const subStyles = StyleSheet.create({
+  sectionLabel: {
+    fontFamily: fonts.body,
+    fontSize: size.xs,
+    color: colors.text.tertiary,
+    letterSpacing: tracking.widest,
+    textTransform: 'uppercase',
+    paddingHorizontal: space[7],
+    marginBottom: space[3],
+  },
+  divider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: colors.border.subtle,
+    marginVertical: space[7],
+    marginHorizontal: space[7],
+  },
+  infoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: space[7],
+    paddingVertical: space[4],
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border.subtle,
+  },
+  infoLabel: {
+    fontFamily: fonts.body,
+    fontSize: size.xs,
+    color: colors.text.tertiary,
+    letterSpacing: tracking.widest,
+    flex: 1,
+  },
+  infoRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space[2],
+  },
+  infoValue: {
+    fontFamily: fonts.body,
+    fontSize: size.sm,
+    color: colors.text.primary,
+  },
+  infoEmpty: {
+    fontFamily: fonts.body,
+    fontSize: size.sm,
+    color: colors.text.tertiary,
+  },
+  infoChevron: {
+    fontFamily: fonts.body,
+    fontSize: size.base,
+    color: colors.text.tertiary,
+  },
+  pickerOptions: {
+    backgroundColor: colors.bg.elevated,
+    marginHorizontal: space[7],
+    marginBottom: space[2],
+  },
+  pickerOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: space[5],
+    paddingVertical: space[3],
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border.subtle,
+  },
+  pickerOptionText: {
+    fontFamily: fonts.body,
+    fontSize: size.sm,
+    color: colors.text.tertiary,
+  },
+  pickerOptionSelected: {
+    color: colors.text.primary,
+  },
+  pickerCheck: {
+    fontFamily: fonts.body,
+    fontSize: size.sm,
+    color: colors.text.primary,
+  },
+});
+
+// ── screen styles ─────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
   container: {
@@ -251,34 +769,61 @@ const styles = StyleSheet.create({
     color: colors.text.tertiary,
   },
   content: {
-    paddingBottom: 120,
+    paddingBottom: 140,
   },
+
+  // Header
   header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     paddingHorizontal: space[7],
+    marginBottom: space[2],
   },
   headerLabel: {
     fontFamily: fonts.body,
     fontSize: size.xs,
     color: colors.text.tertiary,
     letterSpacing: tracking.widest,
-    textTransform: 'uppercase',
   },
-  identity: {
-    marginTop: space[8],
-    paddingHorizontal: space[7],
+  headerActions: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
+  },
+  headerEditRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: space[5],
   },
+  headerActionPrimary: {
+    fontFamily: fonts.body,
+    fontSize: size.sm,
+    color: colors.text.primary,
+  },
+  headerActionSecondary: {
+    fontFamily: fonts.body,
+    fontSize: size.sm,
+    color: colors.text.tertiary,
+  },
+
+  // Identity
+  identity: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    paddingHorizontal: space[7],
+    marginTop: space[8],
+    gap: space[5],
+  },
+  avatarContainer: {},
   avatar: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
+    width: 80,
+    height: 80,
+    borderRadius: 40,
   },
   avatarPlaceholder: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
+    width: 80,
+    height: 80,
+    borderRadius: 40,
     backgroundColor: colors.bg.elevated,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border.default,
@@ -287,7 +832,7 @@ const styles = StyleSheet.create({
   },
   avatarInitial: {
     fontFamily: fonts.display,
-    fontSize: size.xxl,
+    fontSize: size.xxxl,
     color: colors.text.primary,
   },
   identityInfo: {
@@ -299,48 +844,152 @@ const styles = StyleSheet.create({
     color: colors.text.primary,
     letterSpacing: tracking.tight,
   },
-  email: {
+  vibeTag: {
     fontFamily: fonts.body,
     fontSize: size.sm,
     color: colors.text.tertiary,
-    marginTop: space[1],
-  },
-  userTag: {
-    fontFamily: fonts.display,
-    fontSize: size.sm,
-    color: colors.text.secondary,
     letterSpacing: tracking.widest,
     marginTop: space[1],
   },
-  vibeBadge: {
-    marginTop: space[2],
-    paddingVertical: 4,
-    paddingHorizontal: 10,
+  email: {
+    fontFamily: fonts.body,
+    fontSize: size.xs,
+    color: colors.text.tertiary,
+    marginTop: space[1],
+  },
+  aestheticBadge: {
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border.default,
+    paddingVertical: 3,
+    paddingHorizontal: 10,
+    marginTop: space[2],
     alignSelf: 'flex-start',
   },
-  vibeBadgeText: {
+  aestheticBadgeText: {
     fontFamily: fonts.body,
     fontSize: size.xs,
     color: colors.text.secondary,
     letterSpacing: tracking.widest,
   },
-  statsRow: {
-    marginTop: space[8],
-    marginHorizontal: space[7],
-    flexDirection: 'row',
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border.subtle,
+
+  // Bio
+  bioContainer: {
+    paddingHorizontal: space[7],
+    marginTop: space[5],
   },
-  statItem: {
-    flex: 1,
+  bioInput: {
+    fontFamily: fonts.body,
+    fontSize: size.base,
+    color: colors.text.primary,
+    paddingVertical: space[3],
+    paddingHorizontal: 0,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border.default,
+    backgroundColor: 'transparent',
+  },
+  bioText: {
+    fontFamily: fonts.body,
+    fontSize: size.base,
+    color: colors.text.secondary,
+    lineHeight: 22,
+  },
+  bioEmpty: {
+    fontFamily: fonts.body,
+    fontSize: size.base,
+    color: colors.text.tertiary,
+  },
+
+  // Instagram
+  instagramContainer: {
+    paddingHorizontal: space[7],
+    marginTop: space[3],
+  },
+  instagramInputRow: {
+    flexDirection: 'row',
     alignItems: 'center',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border.default,
+    paddingVertical: space[2],
+  },
+  instagramAt: {
+    fontFamily: fonts.body,
+    fontSize: size.sm,
+    color: colors.text.tertiary,
+    marginRight: 2,
+  },
+  instagramInput: {
+    fontFamily: fonts.body,
+    fontSize: size.sm,
+    color: colors.text.primary,
+    flex: 1,
+  },
+  instagramHandle: {
+    fontFamily: fonts.body,
+    fontSize: size.sm,
+    color: colors.text.tertiary,
+  },
+
+  // Completion
+  completionSection: {
+    paddingHorizontal: space[7],
+    marginTop: space[6],
+  },
+  completionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  completionLabel: {
+    fontFamily: fonts.body,
+    fontSize: size.xs,
+    color: colors.text.tertiary,
+    letterSpacing: tracking.widest,
+  },
+  completionScore: {
+    fontFamily: fonts.body,
+    fontSize: size.xs,
+    color: colors.text.primary,
+  },
+  completionTrack: {
+    height: 2,
+    backgroundColor: colors.border.subtle,
+    marginTop: space[2],
+    overflow: 'hidden',
+  },
+  completionFill: {
+    height: 2,
+    backgroundColor: colors.text.primary,
+  },
+  completionCaption: {
+    fontFamily: fonts.body,
+    fontSize: size.xs,
+    color: colors.text.tertiary,
+    marginTop: space[2],
+    lineHeight: 18,
+  },
+
+  // Stats grid
+  statsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginHorizontal: space[7],
+  },
+  statCell: {
+    width: '50%',
     paddingVertical: space[5],
+    alignItems: 'center',
+  },
+  statCellRight: {
+    borderRightWidth: StyleSheet.hairlineWidth,
+    borderRightColor: colors.border.subtle,
+  },
+  statCellBottom: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border.subtle,
   },
   statValue: {
     fontFamily: fonts.display,
-    fontSize: size.xxl,
+    fontSize: size.xl,
     color: colors.text.primary,
     letterSpacing: tracking.tight,
   },
@@ -351,29 +1000,54 @@ const styles = StyleSheet.create({
     letterSpacing: tracking.widest,
     marginTop: space[1],
   },
-  statDivider: {
-    width: StyleSheet.hairlineWidth,
-    backgroundColor: colors.border.subtle,
-  },
-  section: {
-    marginTop: space[8],
+
+  // Influence / taste
+  influenceRow: {
     paddingHorizontal: space[7],
+    marginBottom: space[5],
   },
-  sectionLabel: {
+  influenceHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'baseline',
+    marginBottom: space[2],
+  },
+  influenceLevel: {
+    fontFamily: fonts.body,
+    fontSize: size.sm,
+    color: colors.text.primary,
+  },
+  influenceCaption: {
+    fontFamily: fonts.body,
+    fontSize: size.xs,
+    color: colors.text.tertiary,
+  },
+  influenceTrack: {
+    height: 1,
+    backgroundColor: colors.border.subtle,
+    overflow: 'hidden',
+  },
+  influenceFill: {
+    height: 1,
+    backgroundColor: colors.text.primary,
+  },
+  pillSection: {
+    paddingHorizontal: space[7],
+    marginTop: space[5],
+  },
+  pillSectionLabel: {
     fontFamily: fonts.body,
     fontSize: size.xs,
     color: colors.text.tertiary,
     letterSpacing: tracking.widest,
-    textTransform: 'uppercase',
+    marginBottom: space[3],
   },
-  pillsRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
+  pillsScroll: {
     gap: space[2],
-    marginTop: space[3],
+    paddingRight: space[7],
   },
   pill: {
-    paddingVertical: 8,
+    paddingVertical: 7,
     paddingHorizontal: 14,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border.default,
@@ -384,73 +1058,80 @@ const styles = StyleSheet.create({
     color: colors.text.secondary,
     letterSpacing: tracking.wide,
   },
-  influenceTrack: {
-    height: 1,
-    backgroundColor: colors.border.subtle,
+  tastePlaceholder: {
+    fontFamily: fonts.body,
+    fontSize: size.sm,
+    color: colors.text.tertiary,
+    paddingHorizontal: space[7],
     marginTop: space[3],
   },
-  influenceFill: {
-    height: 1,
-    backgroundColor: colors.text.primary,
+
+  // Inline input for location row
+  inlineInput: {
+    fontFamily: fonts.body,
+    fontSize: size.sm,
+    color: colors.text.primary,
+    flex: 1,
+    textAlign: 'right',
   },
-  influenceCaption: {
+
+  // Toggles
+  toggleRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: space[7],
+    paddingVertical: space[4],
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border.subtle,
+  },
+  toggleInfo: {
+    flex: 1,
+    marginRight: space[4],
+  },
+  toggleTitle: {
+    fontFamily: fonts.body,
+    fontSize: size.sm,
+    color: colors.text.primary,
+  },
+  toggleSubtitle: {
     fontFamily: fonts.body,
     fontSize: size.xs,
     color: colors.text.tertiary,
-    marginTop: space[2],
+    marginTop: 2,
   },
-  influenceLevelText: {
-    color: colors.text.secondary,
-  },
-  actionSection: {
-    marginTop: space[10],
-    paddingHorizontal: space[7],
-  },
-  signOutButton: {
+
+  // Action buttons
+  actionButton: {
+    marginHorizontal: space[7],
+    marginTop: space[3],
     paddingVertical: space[4],
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border.subtle,
+    alignItems: 'center',
   },
-  signOutText: {
+  actionButtonText: {
     fontFamily: fonts.body,
     fontSize: size.base,
     color: colors.text.tertiary,
-    textAlign: 'center',
     letterSpacing: tracking.wide,
   },
-  deleteSection: {
-    marginTop: space[4],
-    paddingHorizontal: space[7],
-    alignItems: 'center',
-    gap: space[2],
-  },
   deleteButton: {
-    width: '100%',
-    paddingVertical: space[4],
-    borderWidth: StyleSheet.hairlineWidth,
     borderColor: '#3a1a1a',
-    alignItems: 'center',
-    justifyContent: 'center',
   },
-  deleteText: {
+  deleteButtonText: {
     fontFamily: fonts.body,
     fontSize: size.base,
     color: '#8A4A4A',
-    textAlign: 'center',
     letterSpacing: tracking.wide,
   },
-  deleteCaption: {
-    fontFamily: fonts.body,
-    fontSize: size.xs,
-    color: colors.text.tertiary,
-    textAlign: 'center',
-    opacity: 0.5,
-  },
+
+  // Dev
   devSection: {
     marginTop: space[6],
     paddingHorizontal: space[7],
     flexDirection: 'row',
-    gap: 8,
+    gap: space[3],
   },
   devButton: {
     flex: 1,

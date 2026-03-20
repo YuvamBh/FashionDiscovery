@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { type Space } from '../lib/spaces';
 
 interface SignalledItem {
   id: string;
@@ -10,6 +11,10 @@ interface FeedState {
   savedItems: string[];
   seenIds: string[];
   activeSpaceId: string | null;
+  availableSpaces: Space[];
+  userSpaces: Space[];
+  brandSentiments: Record<string, 'more' | 'less' | 'blocked'>;
+  spacePrefsLoaded: boolean;
 
   signalItem(id: string, strength: 'weak' | 'medium' | 'strong'): void;
   saveItem(id: string): void;
@@ -17,6 +22,12 @@ interface FeedState {
   setActiveSpace(id: string): void;
   hasSignalled(id: string): boolean;
   hasSaved(id: string): boolean;
+  setAvailableSpaces(spaces: Space[]): void;
+  setUserSpaces(spaces: Space[]): void;
+  setBrandSentiments(sentiments: Record<string, 'more' | 'less' | 'blocked'>): void;
+  setSpacePrefsLoaded(loaded: boolean): void;
+  markBrandLess(brandId: string): void;
+  markBrandMore(brandId: string): void;
 }
 
 export const useFeedStore = create<FeedState>((set, get) => ({
@@ -24,6 +35,10 @@ export const useFeedStore = create<FeedState>((set, get) => ({
   savedItems: [],
   seenIds: [],
   activeSpaceId: null,
+  availableSpaces: [],
+  userSpaces: [],
+  brandSentiments: {},
+  spacePrefsLoaded: false,
 
   signalItem: (id, strength) =>
     set((state) => ({
@@ -47,4 +62,15 @@ export const useFeedStore = create<FeedState>((set, get) => ({
   hasSignalled: (id) => get().signalledItems.some((item) => item.id === id),
 
   hasSaved: (id) => get().savedItems.includes(id),
+
+  setAvailableSpaces: (spaces) => set({ availableSpaces: spaces }),
+  setUserSpaces: (spaces) => set({ userSpaces: spaces }),
+  setBrandSentiments: (sentiments) => set({ brandSentiments: sentiments }),
+  setSpacePrefsLoaded: (loaded) => set({ spacePrefsLoaded: loaded }),
+
+  markBrandLess: (brandId) =>
+    set((state) => ({ brandSentiments: { ...state.brandSentiments, [brandId]: 'less' } })),
+
+  markBrandMore: (brandId) =>
+    set((state) => ({ brandSentiments: { ...state.brandSentiments, [brandId]: 'more' } })),
 }));

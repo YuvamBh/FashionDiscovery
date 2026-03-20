@@ -7,17 +7,45 @@ export type UserProfile = {
   display_name: string | null;
   user_tag: string | null;
   avatar_url: string | null;
+  bio: string | null;
+  instagram_handle: string | null;
+
   onboarding_completed: boolean;
   calibration_completed: boolean;
+
+  // Demographics
+  age_range: string | null;
+  gender_expression: string | null;
+  location_city: string | null;
+  location_country: string | null;
+
+  // Shopping behavior
+  budget_range: string | null;
+  shopping_frequency: string | null;
+
+  // Style DNA
   aesthetic_vibe: string | null;
   fashion_preferences: {
     energies?: string[];
     brand_affinity?: string[];
     aesthetic_vibe?: string;
   } | null;
+  fit_preferences: string[];
+  style_icons: string[];
+
+  // Signal-derived
+  taste_profile: object | null;
   authority_score: number;
   total_signals: number;
-  taste_profile: object | null;
+
+  // Privacy / settings
+  profile_completion_score: number;
+  notifications_enabled: boolean;
+  data_sharing_enabled: boolean;
+  account_visibility: string;
+
+  created_at: string | null;
+  last_active: string | null;
 };
 
 interface AuthState {

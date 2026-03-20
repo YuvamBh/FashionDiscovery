@@ -4,14 +4,41 @@ export type UserProfile = {
   id: string;
   email: string | null;
   display_name: string | null;
+  user_tag: string | null;
   avatar_url: string | null;
+  bio: string | null;
+  instagram_handle: string | null;
+
   onboarding_completed: boolean;
   calibration_completed: boolean;
+
+  // Demographics
+  age_range: string | null;
+  gender_expression: string | null;
+  location_city: string | null;
+  location_country: string | null;
+
+  // Shopping behavior
+  budget_range: string | null;
+  shopping_frequency: string | null;
+
+  // Style DNA
   aesthetic_vibe: string | null;
   fashion_preferences: Record<string, any>;
+  fit_preferences: string[];
+  style_icons: string[];
+
+  // Signal-derived
   taste_profile: Record<string, any>;
   authority_score: number;
   total_signals: number;
+
+  // Privacy / settings
+  profile_completion_score: number;
+  notifications_enabled: boolean;
+  data_sharing_enabled: boolean;
+  account_visibility: string;
+
   created_at: string;
   last_active: string;
 };
@@ -88,7 +115,18 @@ export async function updateNametag(
   return { error };
 }
 
-export async function deleteAccount(userId: string): Promise<{ error: any }> {
+export async function updateUserProfile(
+  userId: string,
+  updates: Partial<UserProfile>,
+): Promise<{ error: any }> {
+  const { error } = await supabase
+    .from('users')
+    .update({ ...updates, last_active: new Date().toISOString() })
+    .eq('id', userId);
+  return { error };
+}
+
+export async function deleteAccount(_userId: string): Promise<{ error: any }> {
   const { error } = await supabase.rpc('delete_user');
   return { error };
 }

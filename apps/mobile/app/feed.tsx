@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useHaptics } from '../lib/useHaptics';
 import {
   View,
   Text,
@@ -20,7 +21,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 
-import { Space, SpaceItem, getSpaces } from '../lib/spaces';
+import { Space, SpaceItem, getAllSpaces, getUserSpaces, recordBrandSentiment } from '../lib/spaces';
 import { recordSignal } from '../lib/signals';
 import { incrementSignalCount } from '../lib/users';
 import { supabase } from '../lib/supabase';
@@ -41,11 +42,15 @@ export default function FeedScreen() {
   const [activeItemIndex, setActiveItemIndex] = useState(0);
   const userId = useRef<string | null>(null);
 
+  const [showPassFeedback, setShowPassFeedback] = useState(false);
+
   const savedItems = useFeedStore((state) => state.savedItems);
   const { signalItem, saveItem, hasSignalled, hasSaved } = useFeedStore();
+  const haptics = useHaptics();
 
   const gridOpacity = useSharedValue(1);
   const signalBtnScale = useSharedValue(1);
+  const passFeedbackOpacity = useSharedValue(0);
 
   const activeSpace: Space | null = spaces[activeSpaceIndex] ?? null;
   const activeItem: SpaceItem | null = activeSpace?.items[activeItemIndex] ?? null;
@@ -54,8 +59,14 @@ export default function FeedScreen() {
     (async () => {
       const { data } = await supabase.auth.getUser();
       userId.current = data.user?.id ?? null;
-      const fetched = await getSpaces();
-      setSpaces(fetched);
+      const [userSpacesData, allSpacesData] = await Promise.all([
+        getUserSpaces(userId.current ?? ''),
+        getAllSpaces(),
+      ]);
+      setSpaces(userSpacesData.length > 0 ? userSpacesData : allSpacesData);
+      useFeedStore.getState().setAvailableSpaces(allSpacesData);
+      useFeedStore.getState().setUserSpaces(userSpacesData);
+      useFeedStore.getState().setSpacePrefsLoaded(true);
       setSpacesLoading(false);
     })();
   }, []);
@@ -73,7 +84,17 @@ export default function FeedScreen() {
   const handlePass = () => {
     const items = activeSpace!.items;
     setActiveItemIndex(activeItemIndex < items.length - 1 ? activeItemIndex + 1 : 0);
+    setShowPassFeedback(true);
+    passFeedbackOpacity.value = withTiming(1, { duration: 200 });
+    setTimeout(() => {
+      passFeedbackOpacity.value = withTiming(0, { duration: 300 });
+      setTimeout(() => setShowPassFeedback(false), 300);
+    }, 3000);
   };
+
+  const passFeedbackStyle = useAnimatedStyle(() => ({
+    opacity: passFeedbackOpacity.value,
+  }));
 
   const handleSignal = () => {
     const item = activeItem!;
@@ -150,9 +171,14 @@ export default function FeedScreen() {
         {/* Header */}
         <View style={[styles.header, { paddingTop: insets.top + 16 }]}>
           <Text style={styles.wordmark}>◈</Text>
-          {savedItems.length > 0 && (
-            <Text style={styles.savedCount}>{savedItems.length}</Text>
-          )}
+          <View style={styles.headerRight}>
+            {savedItems.length > 0 && (
+              <Text style={styles.savedCount}>{savedItems.length}</Text>
+            )}
+            <Pressable onPress={() => router.push('/rooms' as any)} style={styles.roomsBtn}>
+              <Text style={styles.roomsBtnText}>Rooms</Text>
+            </Pressable>
+          </View>
         </View>
 
         {/* Room switcher */}
@@ -235,6 +261,28 @@ export default function FeedScreen() {
               </Pressable>
             </Animated.View>
           </View>
+
+          {/* Pass feedback */}
+          {showPassFeedback && activeItem && (
+            <Animated.View style={[styles.passFeedback, passFeedbackStyle]}>
+              <Text style={styles.passFeedbackLabel}>
+                Not feeling {activeItem.brands.name}?
+              </Text>
+              <Pressable
+                onPress={() => {
+                  haptics.selection();
+                  if (userId.current) {
+                    recordBrandSentiment(userId.current, activeItem.id, 'less').catch(() => {});
+                  }
+                  useFeedStore.getState().markBrandLess(activeItem.brands.name);
+                  passFeedbackOpacity.value = withTiming(0, { duration: 150 });
+                  setTimeout(() => setShowPassFeedback(false), 150);
+                }}
+              >
+                <Text style={styles.passFeedbackAction}>Less of this</Text>
+              </Pressable>
+            </Animated.View>
+          )}
 
           {/* Save link */}
           <Pressable style={styles.saveLink} onPress={handleSave}>
@@ -469,5 +517,43 @@ const styles = StyleSheet.create({
     fontSize: size.sm,
     color: colors.text.tertiary,
     marginTop: space[3],
+  },
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space[3],
+  },
+  roomsBtn: {
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border.default,
+  },
+  roomsBtnText: {
+    fontFamily: fonts.body,
+    fontSize: size.xs,
+    color: colors.text.secondary,
+    letterSpacing: tracking.wide,
+  },
+  passFeedback: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: space[4],
+    marginTop: space[2],
+    paddingVertical: space[2],
+  },
+  passFeedbackLabel: {
+    fontFamily: fonts.body,
+    fontSize: size.xs,
+    color: colors.text.tertiary,
+    letterSpacing: tracking.wide,
+  },
+  passFeedbackAction: {
+    fontFamily: fonts.bodyMedium,
+    fontSize: size.xs,
+    color: colors.text.secondary,
+    letterSpacing: tracking.wide,
+    textDecorationLine: 'underline',
   },
 });

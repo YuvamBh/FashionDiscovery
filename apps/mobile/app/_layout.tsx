@@ -118,6 +118,7 @@ export default function RootLayout() {
         <Stack.Screen name="feed" options={{ animation: 'fade' }} />
         <Stack.Screen name="moodboard" options={{ animation: 'slide_from_right' }} />
         <Stack.Screen name="profile" options={{ animation: 'slide_from_bottom' }} />
+        <Stack.Screen name="rooms" options={{ animation: 'slide_from_bottom' }} />
         <Stack.Screen name="item/[id]" options={{ animation: 'fade' }} />
       </Stack>
     </GestureHandlerRootView>
